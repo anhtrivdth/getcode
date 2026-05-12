@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     code_max_age_minutes: int = 60
     imap_max_messages_scan: int = 30
     poll_interval_seconds: int = 90
+    family_fast_scan_max_messages: int = 100
+    family_fast_scan_since_minutes: int = 24 * 60
+    family_deep_scan_max_messages: int = 1500
+    family_deep_scan_since_minutes: int = 30 * 24 * 60
 
     model_config = SettingsConfigDict(
         env_file=".env",

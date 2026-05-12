@@ -9,6 +9,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from app.config import get_settings
 from app.database import get_db
 from app.models import AccessKey, NetflixSession
 from app.schemas import (
@@ -26,6 +27,7 @@ from app.services.resolve_service import ResolveError, resolve_code
 
 router = APIRouter(prefix="/api/code", tags=["public"])
 HANOI_TZ = timezone(timedelta(hours=7))
+settings = get_settings()
 
 
 def _to_hanoi_time(dt):
@@ -299,8 +301,8 @@ async def get_family_link(payload: ResolveCodeRequest, db: Session = Depends(get
             db=db,
             key_plain=payload.key,
             key_row=key_row,
-            max_messages=25,
-            since_minutes=180,
+            max_messages=settings.family_fast_scan_max_messages,
+            since_minutes=settings.family_fast_scan_since_minutes,
         )
     except FamilyCodeError as err:
         # Fallback deep scan to reduce false 404 when email arrives with delay
@@ -311,8 +313,8 @@ async def get_family_link(payload: ResolveCodeRequest, db: Session = Depends(get
                     db=db,
                     key_plain=payload.key,
                     key_row=key_row,
-                    max_messages=200,
-                    since_minutes=60 * 24 * 14,
+                    max_messages=settings.family_deep_scan_max_messages,
+                    since_minutes=settings.family_deep_scan_since_minutes,
                 )
             except FamilyCodeError as deep_err:
                 err = deep_err

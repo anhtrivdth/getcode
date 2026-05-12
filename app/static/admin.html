@@ -1,0 +1,998 @@
+﻿<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Panel</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap");
+
+    :root {
+      --bg: #eef3f9;
+      --surface: #ffffff;
+      --surface-soft: #f6f9fd;
+      --line: #d4deeb;
+      --line-strong: #b8c7da;
+      --text: #102033;
+      --muted: #5f7088;
+      --brand: #1e4e90;
+      --brand-strong: #163e73;
+      --ok: #106339;
+      --err: #b42318;
+      --shadow: 0 14px 30px rgba(10, 30, 60, 0.08);
+      --radius-lg: 16px;
+      --radius-md: 12px;
+      --radius-sm: 9px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Manrope", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, rgba(30, 78, 144, 0.1), transparent 40%),
+        linear-gradient(170deg, #eef3f9 0%, #e4edf8 100%);
+    }
+
+    .app {
+      width: min(1260px, calc(100% - 28px));
+      margin: 14px auto;
+      display: block;
+    }
+
+    .main {
+      display: grid;
+      gap: 12px;
+    }
+
+    .topbar,
+    .module {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+    }
+
+    .topbar {
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .top-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .top-line h2 {
+      margin: 0;
+      font-size: 23px;
+      font-weight: 800;
+    }
+
+    .top-line p {
+      margin: 4px 0 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .quick-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .chip-btn {
+      border: 1px solid var(--line-strong);
+      background: #f5f9ff;
+      color: #203450;
+      padding: 8px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .chip-btn.active {
+      color: #fff;
+      background: var(--brand);
+      border-color: var(--brand);
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .top-actions button,
+    .primary-btn,
+    .secondary-btn {
+      border: 0;
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .top-actions button,
+    .primary-btn {
+      background: var(--brand);
+      color: #fff;
+    }
+
+    .top-actions button:hover,
+    .primary-btn:hover {
+      background: var(--brand-strong);
+    }
+
+    .secondary-btn {
+      background: #31465f;
+      color: #fff;
+    }
+
+    .secondary-btn:hover {
+      background: #23374c;
+    }
+
+    .module {
+      padding: 14px;
+    }
+
+    .module h3 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .module p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .sub-block {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: #f9fbff;
+      padding: 10px;
+    }
+
+    .sub-block h4 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 800;
+      color: #1e3554;
+    }
+
+    .sub-block p {
+      margin-top: 4px;
+      font-size: 12px;
+    }
+
+    .sub-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .table-action-btn {
+      border: 0;
+      border-radius: 7px;
+      padding: 6px 9px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-right: 6px;
+    }
+
+    .table-action-btn:last-child {
+      margin-right: 0;
+    }
+
+    .table-action-btn.check {
+      background: #e8f1ff;
+      color: #22457a;
+      border: 1px solid #aecaef;
+    }
+
+    .table-action-btn.relogin {
+      background: #fff3de;
+      color: #8a4b00;
+      border: 1px solid #f0d2a3;
+    }
+
+    .table-action-btn.delete {
+      background: #fff1f0;
+      color: #a12a1f;
+      border: 1px solid #e8b8b3;
+    }
+
+    .table-action-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .session-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      border: 1px solid transparent;
+    }
+
+    .session-badge.live {
+      color: #105f36;
+      background: #ebf8f0;
+      border-color: #b7e2c6;
+    }
+
+    .session-badge.die {
+      color: #9f261d;
+      background: #fff1ef;
+      border-color: #efb8b2;
+    }
+
+    .session-badge.none {
+      color: #5e7089;
+      background: #eef3f9;
+      border-color: #d5deea;
+    }
+
+    .session-badge.checking {
+      color: #22457a;
+      background: #e8f1ff;
+      border-color: #aecaef;
+    }
+
+    form {
+      margin-top: 12px;
+      display: grid;
+      gap: 10px;
+    }
+
+    label {
+      display: grid;
+      gap: 5px;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    input,
+    textarea,
+    button {
+      font-family: inherit;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm);
+      background: #fbfdff;
+      color: var(--text);
+      padding: 10px;
+      font-size: 14px;
+    }
+
+    input:focus,
+    textarea:focus {
+      outline: 2px solid rgba(30, 78, 144, 0.2);
+      border-color: var(--brand);
+      background: #fff;
+    }
+
+    textarea {
+      min-height: 96px;
+      resize: vertical;
+    }
+
+    .btn-row {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .status {
+      margin-top: 10px;
+      border: 1px solid var(--line);
+      background: var(--surface-soft);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      font-size: 13px;
+      white-space: pre-wrap;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .status.ok {
+      border-color: rgba(16, 99, 57, 0.24);
+      background: #eef9f2;
+      color: var(--ok);
+    }
+
+    .status.err {
+      border-color: rgba(180, 35, 24, 0.28);
+      background: #fff3f2;
+      color: var(--err);
+    }
+
+    .hint-box {
+      margin-top: 10px;
+      border: 1px dashed var(--line-strong);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      background: #f8fbff;
+    }
+
+    .hint-box summary {
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 700;
+      user-select: none;
+    }
+
+    .stats {
+      margin-top: 12px;
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: #f8fbff;
+      padding: 9px;
+    }
+
+    .stat .label {
+      margin: 0;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .stat .value {
+      margin: 5px 0 0;
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--brand-strong);
+    }
+
+    .table-wrap {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      min-width: 760px;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      padding: 10px;
+      font-size: 13px;
+      vertical-align: top;
+    }
+
+    th {
+      background: #edf4fc;
+      color: #334a66;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      font-weight: 800;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    @media (max-width: 760px) {
+      .app {
+        width: calc(100% - 14px);
+        margin: 8px auto;
+      }
+
+      .btn-row,
+      .stats {
+        grid-template-columns: 1fr;
+      }
+
+      .table-action-btn {
+        width: 100%;
+        margin-right: 0;
+        margin-bottom: 6px;
+      }
+
+      .table-action-btn:last-child {
+        margin-bottom: 0;
+      }
+
+      .top-line h2 {
+        font-size: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="main">
+      <header class="topbar">
+        <div class="top-line">
+          <div>
+            <h2>Bảng Điều Khiển Quản Trị</h2>
+            <p>Điều hướng nhanh theo từng nghiệp vụ, không hiển thị lẫn nhiều phần cùng lúc.</p>
+          </div>
+          <div class="top-actions">
+            <button id="reload-btn" type="button">Tải lại danh sách</button>
+            <button id="logout-btn" type="button" class="secondary-btn">Đăng xuất</button>
+          </div>
+        </div>
+        <div class="quick-actions">
+          <button type="button" class="chip-btn" data-module-target="imap">Mở KEY + IMAP</button>
+          <button type="button" class="chip-btn" data-module-target="netflix">Mở Netflix Session</button>
+          <button type="button" class="chip-btn" data-module-target="list">Mở Danh sách KEY</button>
+        </div>
+      </header>
+
+      <section class="module" data-module="imap" hidden>
+        <h3>Thiết Lập KEY + IMAP</h3>
+        <p>Nhập KEY và mailbox để lưu cấu hình, đồng thời kiểm tra đăng nhập IMAP trước khi dùng.</p>
+        <form id="imap-form">
+          <label>KEY
+            <input name="key" required minlength="8" placeholder="Ví dụ: TEAM-KEY-001" />
+          </label>
+          <label>Email mailbox
+            <input name="email" type="email" required placeholder="your_mail@gmail.com" />
+          </label>
+          <label>Gmail App Password
+            <input name="app_password" required placeholder="xxxx xxxx xxxx xxxx" />
+          </label>
+          <button type="submit" class="primary-btn">Lưu và kiểm tra đăng nhập IMAP</button>
+        </form>
+        <div id="imap-status" class="status">Sẵn sàng.</div>
+        <section class="sub-block">
+          <h4>KEY + Email Mailbox đã lưu</h4>
+          <p>Danh sách nhanh để quản lý KEY và mailbox ngay trong màn hình IMAP.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>KEY</th>
+                  <th>Email Mailbox</th>
+                  <th>IMAP server</th>
+                  <th>Trạng thái</th>
+                  <th>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="imap-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="module" data-module="netflix" hidden>
+        <h3>Liên Kết Netflix Session</h3>
+        <p>Dùng KEY đã tạo để đăng nhập Netflix thủ công, lưu session tự động và kiểm tra LIVE/DIE.</p>
+        <form id="netflix-form">
+          <label>KEY
+            <input id="netflix-key" name="key" required minlength="8" placeholder="Nhập đúng KEY đã tạo" />
+          </label>
+          <button id="start-login-btn" type="submit" class="secondary-btn">Đăng nhập thủ công và tự lưu session</button>
+        </form>
+
+        <div id="session-status" class="status">Sẵn sàng.</div>
+        <section class="sub-block">
+          <div class="sub-head">
+            <h4>KEY + Netflix Session đã liên kết</h4>
+            <button id="check-all-sessions-btn" type="button" class="primary-btn">Check toàn bộ session LIVE / DIE</button>
+          </div>
+          <p>Theo dõi nhanh key nào đã có session Netflix, kiểm tra tự động và xử lý đăng nhập lại ngay tại đây.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>KEY</th>
+                  <th>Session đã lưu</th>
+                  <th>Kết quả check</th>
+                  <th>Cập nhật gần nhất</th>
+                  <th>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="netflix-rows"></tbody>
+            </table>
+          </div>
+          <div id="netflix-bulk-status" class="status">Sẵn sàng check session.</div>
+        </section>
+      </section>
+
+      <section class="module" data-module="list" hidden>
+        <h3>Danh Sách KEY + IMAP + Session</h3>
+        <p>Tổng hợp dữ liệu đã liên kết, trạng thái hoạt động và mức độ hoàn tất cấu hình.</p>
+
+        <div class="stats">
+          <article class="stat">
+            <p class="label">Tổng KEY</p>
+            <p id="stat-total" class="value">0</p>
+          </article>
+          <article class="stat">
+            <p class="label">Đã liên kết Netflix</p>
+            <p id="stat-linked" class="value">0</p>
+          </article>
+          <article class="stat">
+            <p class="label">KEY đang dùng</p>
+            <p id="stat-active" class="value">0</p>
+          </article>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>KEY</th>
+                <th>Email IMAP</th>
+                <th>IMAP server</th>
+                <th>Session Netflix</th>
+                <th>Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    if (window.location.protocol === "file:") {
+      const targetUrl = `http://127.0.0.1:8000/admin${window.location.hash || ""}`;
+      window.location.replace(targetUrl);
+    }
+
+    const imapForm = document.getElementById("imap-form");
+    const netflixForm = document.getElementById("netflix-form");
+    const netflixKeyInput = document.getElementById("netflix-key");
+    const checkAllSessionsBtn = document.getElementById("check-all-sessions-btn");
+    const imapStatusEl = document.getElementById("imap-status");
+    const sessionStatusEl = document.getElementById("session-status");
+    const netflixBulkStatusEl = document.getElementById("netflix-bulk-status");
+    const imapRowsEl = document.getElementById("imap-rows");
+    const netflixRowsEl = document.getElementById("netflix-rows");
+    const rowsEl = document.getElementById("rows");
+    const reloadBtn = document.getElementById("reload-btn");
+    const logoutBtn = document.getElementById("logout-btn");
+    const totalStatEl = document.getElementById("stat-total");
+    const linkedStatEl = document.getElementById("stat-linked");
+    const activeStatEl = document.getElementById("stat-active");
+
+    const moduleEls = Array.from(document.querySelectorAll(".module"));
+    const moduleButtons = Array.from(document.querySelectorAll("[data-module-target]"));
+
+    let manualJobTimer = null;
+    let latestRows = [];
+    const sessionHealthMap = new Map();
+
+    function setStatus(el, text, isError = false) {
+      el.textContent = text;
+      el.className = "status " + (isError ? "err" : "ok");
+    }
+
+    function getNetflixKey() {
+      return (netflixKeyInput.value || "").trim();
+    }
+
+    function renderStats(rows) {
+      totalStatEl.textContent = String(rows.length);
+      linkedStatEl.textContent = String(rows.filter((r) => r.has_netflix_credentials).length);
+      activeStatEl.textContent = String(rows.filter((r) => r.active).length);
+    }
+
+    function formatSessionUpdatedAt(value) {
+      if (!value) return "-";
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return String(value);
+      return parsed.toLocaleString("vi-VN");
+    }
+
+    function getSessionHealth(keyId, hasSession) {
+      if (!hasSession) {
+        return { cls: "none", text: "Chưa có session", message: "Key chưa có session để check." };
+      }
+      const state = sessionHealthMap.get(keyId);
+      if (!state || state.status === "unknown") {
+        return { cls: "none", text: "Chưa check", message: "Chưa kiểm tra trạng thái." };
+      }
+      if (state.status === "checking") {
+        return { cls: "checking", text: "Đang check", message: "Hệ thống đang kiểm tra..." };
+      }
+      if (state.status === "live") {
+        return { cls: "live", text: "LIVE", message: state.message || "Session còn sống." };
+      }
+      return { cls: "die", text: "DIE", message: state.message || "Session đã hết hạn, cần đăng nhập lại." };
+    }
+
+    function renderQuickManageTables(rows) {
+      if (!rows.length) {
+        const emptyImapRow = `<tr><td colspan="6">Chưa có dữ liệu.</td></tr>`;
+        const emptyNetflixRow = `<tr><td colspan="6">Chưa có dữ liệu.</td></tr>`;
+        imapRowsEl.innerHTML = emptyImapRow;
+        netflixRowsEl.innerHTML = emptyNetflixRow;
+        return;
+      }
+
+      imapRowsEl.innerHTML = rows.map((r) => `
+        <tr>
+          <td>${r.id}</td>
+          <td>${r.key}</td>
+          <td>${r.email_masked || "-"}</td>
+          <td>${r.imap_server || "-"}</td>
+          <td>${r.active ? "Đang dùng" : "Tắt"}</td>
+          <td>
+            <button type="button" class="table-action-btn delete" data-action="delete-key" data-key-id="${r.id}" data-key-label="${r.key}">Xóa KEY</button>
+          </td>
+        </tr>
+      `).join("");
+
+      netflixRowsEl.innerHTML = rows.map((r) => {
+        const health = getSessionHealth(r.id, r.has_netflix_credentials);
+        const reloginBtn = health.cls === "die"
+          ? `<button type="button" class="table-action-btn relogin" data-action="relogin-key" data-key="${r.key}">Đăng nhập lại</button>`
+          : "";
+        return `
+        <tr>
+          <td>${r.id}</td>
+          <td>${r.key}</td>
+          <td>${r.has_netflix_credentials ? "Đã liên kết" : "Chưa liên kết"}</td>
+          <td>
+            <span class="session-badge ${health.cls}">${health.text}</span><br />
+            <small>${health.message}</small>
+          </td>
+          <td>${formatSessionUpdatedAt(r.session_updated_at)}</td>
+          <td>
+            ${reloginBtn}
+            <button type="button" class="table-action-btn delete" data-action="delete-key" data-key-id="${r.id}" data-key-label="${r.key}">Xóa</button>
+          </td>
+        </tr>
+      `;
+      }).join("");
+    }
+
+    function activateModule(moduleName) {
+      moduleEls.forEach((el) => {
+        el.hidden = el.dataset.module !== moduleName;
+      });
+
+      moduleButtons.forEach((btn) => {
+        const isActive = btn.dataset.moduleTarget === moduleName;
+        btn.classList.toggle("active", isActive);
+      });
+
+      if (moduleName === "list") {
+        loadRows().catch((err) => setStatus(imapStatusEl, String(err.message || err), true));
+      }
+
+      history.replaceState(null, "", `#${moduleName}`);
+    }
+
+    function resolveInitialModule() {
+      const hash = (window.location.hash || "").replace("#", "");
+      if (["imap", "netflix", "list"].includes(hash)) return hash;
+      if (hash === "section-netflix") return "netflix";
+      if (hash === "section-list") return "list";
+      return "imap";
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+        ...options
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 401) {
+          window.location.href = "/admin/login";
+          return null;
+        }
+        throw new Error(data.message || data.detail || ("HTTP " + res.status));
+      }
+      return data;
+    }
+
+    async function loadRows() {
+      const data = await api("/api/admin/simple/list");
+      if (!data) return;
+      latestRows = data;
+      const currentIds = new Set(data.map((r) => r.id));
+      for (const keyId of Array.from(sessionHealthMap.keys())) {
+        if (!currentIds.has(keyId)) {
+          sessionHealthMap.delete(keyId);
+        }
+      }
+      rowsEl.innerHTML = data.map((r) => `
+        <tr>
+          <td>${r.id}</td>
+          <td>${r.key}</td>
+          <td>${r.email_masked || "-"}</td>
+          <td>${r.imap_server || "-"}</td>
+          <td>${r.has_netflix_credentials ? "Đã liên kết" : "Chưa liên kết"}</td>
+          <td>${r.active ? "Đang dùng" : "Tắt"}</td>
+        </tr>
+      `).join("");
+      renderStats(data);
+      renderQuickManageTables(data);
+    }
+
+    async function deleteKeyById(keyId, keyLabel = "") {
+      const confirmed = window.confirm(`Xóa KEY ${keyLabel || "#" + keyId}? Hành động này không hoàn tác.`);
+      if (!confirmed) return;
+      await api(`/api/admin/keys/${keyId}`, { method: "DELETE" });
+      sessionHealthMap.delete(Number(keyId));
+      setStatus(imapStatusEl, `Đã xóa KEY ${keyLabel || keyId}.`);
+      setStatus(sessionStatusEl, `Đã xóa KEY ${keyLabel || keyId}.`);
+      setStatus(netflixBulkStatusEl, `Đã xóa KEY ${keyLabel || keyId}.`);
+      await loadRows();
+    }
+
+    async function startManualLoginForKey(keyValue) {
+      setStatus(sessionStatusEl, `Đang mở đăng nhập Netflix cho KEY: ${keyValue}...`);
+      const related = latestRows.find((row) => row.key === keyValue);
+      if (related) {
+        sessionHealthMap.set(related.id, { status: "checking", message: "Đang cập nhật session..." });
+        renderQuickManageTables(latestRows);
+      }
+      const result = await api("/api/admin/simple/netflix-login-manual/start", {
+        method: "POST",
+        body: JSON.stringify({ key: keyValue })
+      });
+      if (!result) return;
+      setStatus(sessionStatusEl, `[${result.status}] ${result.message}\njob_id: ${result.job_id}`);
+      await pollManualJob(result.job_id);
+    }
+
+    async function checkSessionByRow(row) {
+      if (!row.has_netflix_credentials) {
+        sessionHealthMap.set(row.id, { status: "none", message: "Chưa có session để kiểm tra." });
+        renderQuickManageTables(latestRows);
+        return { alive: false, key: row.key, message: "Chưa có session để kiểm tra." };
+      }
+
+      sessionHealthMap.set(row.id, { status: "checking", message: "Đang kiểm tra..." });
+      renderQuickManageTables(latestRows);
+
+      const result = await api("/api/admin/simple/netflix-session-check", {
+        method: "POST",
+        body: JSON.stringify({ key: row.key })
+      });
+
+      if (!result) {
+        sessionHealthMap.set(row.id, { status: "die", message: "Không check được session." });
+        renderQuickManageTables(latestRows);
+        return { alive: false, key: row.key, message: "Không check được session." };
+      }
+
+      sessionHealthMap.set(row.id, {
+        status: result.alive ? "live" : "die",
+        message: result.message || ""
+      });
+      renderQuickManageTables(latestRows);
+      return result;
+    }
+
+    async function checkAllSessions() {
+      const rowsWithSession = latestRows.filter((r) => r.has_netflix_credentials);
+      if (!rowsWithSession.length) {
+        setStatus(netflixBulkStatusEl, "Chưa có session nào để kiểm tra.");
+        return;
+      }
+
+      checkAllSessionsBtn.disabled = true;
+      setStatus(netflixBulkStatusEl, `Đang check ${rowsWithSession.length} session...`);
+
+      let liveCount = 0;
+      let dieCount = 0;
+      for (const row of rowsWithSession) {
+        try {
+          const result = await checkSessionByRow(row);
+          if (result.alive) {
+            liveCount += 1;
+          } else {
+            dieCount += 1;
+          }
+        } catch (err) {
+          dieCount += 1;
+          sessionHealthMap.set(row.id, { status: "die", message: String(err.message || err) });
+          renderQuickManageTables(latestRows);
+        }
+      }
+
+      checkAllSessionsBtn.disabled = false;
+      setStatus(netflixBulkStatusEl, `Hoàn tất check. LIVE: ${liveCount} | DIE: ${dieCount}`, dieCount > 0);
+    }
+
+    function stopManualPoll() {
+      if (manualJobTimer) {
+        clearInterval(manualJobTimer);
+        manualJobTimer = null;
+      }
+    }
+
+    async function pollManualJob(jobId) {
+      stopManualPoll();
+      manualJobTimer = setInterval(async () => {
+        try {
+          const job = await api(`/api/admin/simple/netflix-login-manual/${jobId}`);
+          if (!job) return;
+          const isError = job.status === "error" || job.status === "timeout";
+          setStatus(sessionStatusEl, `[${job.status}] ${job.message}\nKEY: ${job.key}`, isError);
+          const related = latestRows.find((row) => row.key === job.key);
+          if (related) {
+            if (job.status === "queued" || job.status === "running") {
+              sessionHealthMap.set(related.id, { status: "checking", message: "Đang cập nhật session..." });
+            } else if (isError) {
+              sessionHealthMap.set(related.id, { status: "die", message: job.message });
+            } else {
+              sessionHealthMap.set(related.id, { status: "unknown", message: "Đã cập nhật session, bấm check để xác nhận." });
+            }
+            renderQuickManageTables(latestRows);
+          }
+          if (job.status !== "queued" && job.status !== "running") {
+            stopManualPoll();
+            await loadRows();
+          }
+        } catch (err) {
+          stopManualPoll();
+          setStatus(sessionStatusEl, String(err.message || err), true);
+        }
+      }, 2000);
+    }
+
+    moduleButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const target = btn.dataset.moduleTarget;
+        activateModule(target);
+      });
+    });
+
+    imapRowsEl.addEventListener("click", async (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target.dataset.action !== "delete-key") return;
+      const keyId = Number(target.dataset.keyId || 0);
+      const keyLabel = target.dataset.keyLabel || "";
+      if (!keyId) return;
+      try {
+        await deleteKeyById(keyId, keyLabel);
+      } catch (err) {
+        setStatus(imapStatusEl, String(err.message || err), true);
+      }
+    });
+
+    netflixRowsEl.addEventListener("click", async (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const action = target.dataset.action;
+      if (!action) return;
+
+      const keyId = Number(target.dataset.keyId || 0);
+      const keyValue = (target.dataset.key || "").trim();
+      const keyLabel = target.dataset.keyLabel || keyValue;
+
+      try {
+        if (action === "delete-key") {
+          if (!keyId) return;
+          await deleteKeyById(keyId, keyLabel);
+          return;
+        }
+
+        if (action === "relogin-key") {
+          if (!keyValue) return;
+          await startManualLoginForKey(keyValue);
+          setStatus(netflixBulkStatusEl, `Đang đăng nhập lại cho KEY ${keyValue}...`);
+        }
+      } catch (err) {
+        setStatus(sessionStatusEl, String(err.message || err), true);
+      }
+    });
+
+    checkAllSessionsBtn.addEventListener("click", async () => {
+      try {
+        await checkAllSessions();
+      } catch (err) {
+        checkAllSessionsBtn.disabled = false;
+        setStatus(netflixBulkStatusEl, String(err.message || err), true);
+      }
+    });
+
+    imapForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const payload = {
+        key: imapForm.key.value.trim(),
+        email: imapForm.email.value.trim(),
+        app_password: imapForm.app_password.value
+      };
+      setStatus(imapStatusEl, "Đang kiểm tra đăng nhập IMAP...");
+      try {
+        const result = await api("/api/admin/simple/setup", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+        if (!result) return;
+        setStatus(imapStatusEl, `OK: Đã lưu IMAP thành công.\nKEY: ${result.key}\nEmail: ${result.email_masked}`);
+        await loadRows();
+      } catch (err) {
+        setStatus(imapStatusEl, String(err.message || err), true);
+      }
+    });
+
+    netflixForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const keyValue = getNetflixKey();
+      if (!keyValue) {
+        setStatus(sessionStatusEl, "Vui lòng nhập KEY trước.", true);
+        return;
+      }
+      try {
+        await startManualLoginForKey(keyValue);
+      } catch (err) {
+        setStatus(sessionStatusEl, String(err.message || err), true);
+      }
+    });
+
+    reloadBtn.addEventListener("click", async () => {
+      try {
+        await loadRows();
+        const currentModule = moduleEls.find((el) => !el.hidden)?.dataset.module;
+        if (currentModule === "imap") {
+          setStatus(imapStatusEl, "Đã tải lại danh sách.");
+        } else if (currentModule === "netflix") {
+          setStatus(sessionStatusEl, "Đã tải lại danh sách.");
+          setStatus(netflixBulkStatusEl, "Đã tải lại danh sách session.");
+        } else {
+          setStatus(imapStatusEl, "Đã tải lại danh sách.");
+        }
+      } catch (err) {
+        setStatus(imapStatusEl, String(err.message || err), true);
+      }
+    });
+
+    logoutBtn.addEventListener("click", async () => {
+      await fetch("/admin/logout", { method: "POST", credentials: "same-origin" });
+      window.location.href = "/admin/login";
+    });
+
+    activateModule(resolveInitialModule());
+    loadRows();
+  </script>
+</body>
+</html>
+
+

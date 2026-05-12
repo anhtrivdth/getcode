@@ -1,0 +1,78 @@
+﻿<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Login</title>
+  <style>
+    :root {
+      --bg: #f3f6fb;
+      --card: #ffffff;
+      --line: #dbe3ef;
+      --fg: #0f172a;
+      --muted: #475569;
+      --err: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: "Manrope", "Segoe UI", sans-serif;
+      padding: 16px;
+    }
+    .card {
+      width: min(440px, 100%);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 18px;
+    }
+    h1 { margin: 0 0 8px; font-size: 20px; }
+    p { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
+    label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+    input, button {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid #c8d3e4;
+      padding: 10px 11px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    button {
+      margin-top: 10px;
+      border: 0;
+      background: #0f172a;
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .error { margin-top: 8px; color: var(--err); min-height: 20px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Đăng nhập Admin</h1>
+    <p>Nhập mật khẩu để vào trang quản trị.</p>
+    <form id="login-form" action="/admin/login" method="post" novalidate>
+      <label>Mật khẩu
+        <input id="password" name="password" type="password" required autocomplete="current-password" />
+      </label>
+      <button type="submit">Vào Admin Panel</button>
+    </form>
+    <div id="error-box" class="error"></div>
+  </main>
+
+  <script>
+    const errorBox = document.getElementById("error-box");
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("error") === "1") {
+      errorBox.textContent = "Mật khẩu admin không đúng.";
+    }
+  </script>
+</body>
+</html>
+

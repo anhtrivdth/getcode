@@ -1,7 +1,11 @@
-node_modules/
-**/node_modules/
-.next/
-out/
-dist/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+app.db
+tests/test.db
 .env
-.env.local
+*.db-journal
+tests/*.db
+*.pyo
+temp_cleanup_test.txt

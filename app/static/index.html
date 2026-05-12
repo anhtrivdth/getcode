@@ -1,0 +1,795 @@
+﻿<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Get Code Dashboard</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap");
+
+    :root {
+      --bg: #f3f6fb;
+      --card: #ffffff;
+      --line: #d8e1ef;
+      --line-strong: #bfd0e6;
+      --text: #11233b;
+      --muted: #5f7188;
+      --brand: #1b4f93;
+      --brand-strong: #133d75;
+      --ok: #14673c;
+      --warn: #8e5a08;
+      --err: #b42318;
+      --radius-lg: 16px;
+      --radius-md: 12px;
+      --radius-sm: 10px;
+      --shadow: 0 16px 34px rgba(15, 35, 62, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Manrope", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, rgba(27, 79, 147, 0.1), transparent 34%),
+        linear-gradient(165deg, #f5f8fd 0%, #eef3fa 100%);
+      padding: 20px 12px;
+    }
+
+    .app {
+      width: min(820px, 100%);
+      margin: 0 auto;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      animation: fade-in 0.24s ease;
+    }
+
+    .head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .title {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: 0.2px;
+    }
+
+    .subtitle {
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .lang-switch {
+      display: inline-flex;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      padding: 3px;
+      background: #f7faff;
+      gap: 2px;
+    }
+
+    .lang-btn {
+      border: 0;
+      background: transparent;
+      color: #3a5372;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      padding: 7px 12px;
+      cursor: pointer;
+      transition: background 0.16s ease, color 0.16s ease;
+    }
+
+    .lang-btn.active {
+      background: var(--brand);
+      color: #fff;
+    }
+
+    .tabs {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .tab-btn {
+      border: 1px solid var(--line-strong);
+      background: #fff;
+      color: #1e3858;
+      border-radius: var(--radius-md);
+      padding: 10px;
+      text-align: left;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      line-height: 1.35;
+      transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+    }
+
+    .tab-btn.active {
+      border-color: var(--brand);
+      box-shadow: 0 8px 16px rgba(27, 79, 147, 0.18);
+      transform: translateY(-1px);
+      background: #f4f8ff;
+      color: var(--brand-strong);
+    }
+
+    form {
+      margin-top: 13px;
+      display: grid;
+      gap: 9px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    input, button {
+      font-family: inherit;
+      font-size: 15px;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm);
+      background: #fcfdff;
+      padding: 11px 12px;
+      color: var(--text);
+    }
+
+    input:focus {
+      outline: none;
+      border-color: var(--brand);
+      box-shadow: 0 0 0 4px rgba(27, 79, 147, 0.12);
+      background: #fff;
+    }
+
+    .submit-btn {
+      border: 0;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(130deg, var(--brand), var(--brand-strong));
+      color: #fff;
+      font-weight: 800;
+      padding: 11px 12px;
+      cursor: pointer;
+      transition: filter 0.16s ease, transform 0.16s ease;
+    }
+
+    .submit-btn:hover {
+      filter: brightness(1.03);
+      transform: translateY(-1px);
+    }
+
+    .submit-btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.72;
+      transform: none;
+    }
+
+    .submit-btn.loading::after {
+      content: "";
+      width: 14px;
+      height: 14px;
+      margin-left: 8px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.45);
+      border-top-color: #fff;
+      display: inline-block;
+      vertical-align: text-bottom;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .loading {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: #f8fbff;
+      padding: 10px 11px;
+      display: none;
+    }
+
+    .loading-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .loading-track {
+      height: 8px;
+      border-radius: 999px;
+      background: #dce8f7;
+      overflow: hidden;
+    }
+
+    .loading-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(120deg, #1f5fb2, #1b4f93);
+      transition: width 0.15s linear;
+    }
+
+    .result {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: #f9fbff;
+      padding: 11px;
+      font-size: 14px;
+      color: #244366;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 0.18s ease, transform 0.18s ease;
+    }
+
+    .result.ready {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .result.ok {
+      border-color: rgba(20, 103, 60, 0.3);
+      background: #eef9f2;
+      color: var(--ok);
+    }
+
+    .result.warn {
+      border-color: rgba(142, 90, 8, 0.3);
+      background: #fff8ee;
+      color: var(--warn);
+    }
+
+    .result.error {
+      border-color: rgba(180, 35, 24, 0.3);
+      background: #fff2f1;
+      color: var(--err);
+    }
+
+    .codes {
+      margin-top: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      overflow-x: auto;
+      display: none;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      min-width: 540px;
+    }
+
+    th, td {
+      border-bottom: 1px solid #dee8f5;
+      padding: 9px;
+      text-align: left;
+      vertical-align: top;
+      font-size: 13px;
+      color: #1f3b5d;
+    }
+
+    th {
+      background: #edf5ff;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .family-link {
+      margin-top: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: #f9fbff;
+      padding: 11px;
+      display: none;
+      font-size: 14px;
+    }
+
+    .family-link-btn {
+      margin-top: 8px;
+      border: 0;
+      background: #223a5a;
+      color: #fff;
+      border-radius: 9px;
+      padding: 10px 13px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .family-link-meta {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .hint {
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .coming-soon-note {
+      margin-top: 10px;
+      display: none;
+      border: 1px dashed #cf9a4c;
+      background: #fff7eb;
+      color: #8f5f1a;
+      border-radius: var(--radius-sm);
+      padding: 10px 11px;
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 760px) {
+      .tabs { grid-template-columns: 1fr; }
+      .title { font-size: 23px; }
+      .app { padding: 14px; }
+      table { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="head">
+      <div>
+        <h1 id="title" class="title">Get Code Dashboard</h1>
+        <p id="subtitle" class="subtitle">Tra cứu mã nhanh theo KEY đã được liên kết mailbox.</p>
+      </div>
+      <div class="lang-switch" role="group" aria-label="Language switch">
+        <button type="button" class="lang-btn active" data-lang="vi">VI</button>
+        <button type="button" class="lang-btn" data-lang="en">EN</button>
+      </div>
+    </header>
+
+    <div class="tabs">
+      <button type="button" class="tab-btn active" data-feature="login_code"></button>
+      <button type="button" class="tab-btn" data-feature="family_code"></button>
+      <button type="button" class="tab-btn" data-feature="tv_verify"></button>
+    </div>
+
+    <form id="check-form" novalidate>
+      <label id="key-label" for="key-input">Access KEY</label>
+      <input id="key-input" type="password" required minlength="8" autocomplete="off" />
+      <button id="submit-btn" type="submit" class="submit-btn"></button>
+    </form>
+
+    <div id="loading-box" class="loading" aria-live="polite">
+      <div class="loading-head">
+        <span id="loading-text"></span>
+        <span id="loading-meta">0s | 0%</span>
+      </div>
+      <div class="loading-track">
+        <div id="loading-fill" class="loading-fill"></div>
+      </div>
+    </div>
+
+    <div id="result" class="result ready"></div>
+
+    <div id="codes-box" class="codes">
+      <table>
+        <thead>
+          <tr>
+            <th id="th-no">#</th>
+            <th id="th-code">Code</th>
+            <th id="th-time">Received at</th>
+            <th id="th-subject">Subject</th>
+          </tr>
+        </thead>
+        <tbody id="codes-body"></tbody>
+      </table>
+    </div>
+
+    <div id="family-link-box" class="family-link">
+      <div id="family-link-title"></div>
+      <button id="family-link-btn" type="button" class="family-link-btn"></button>
+      <div id="family-link-meta" class="family-link-meta"></div>
+    </div>
+
+    <div id="coming-soon-note" class="coming-soon-note"></div>
+
+    <p id="hint" class="hint"></p>
+  </main>
+
+  <script>
+    if (window.location.protocol === "file:") {
+      window.location.replace("http://127.0.0.1:8000/");
+    }
+
+    const API_BASE = window.location.protocol === "file:" ? "http://127.0.0.1:8000" : "";
+
+    const I18N = {
+      vi: {
+        title: "Get Code Dashboard",
+        subtitle: "Tra cứu mã nhanh theo KEY đã được liên kết mailbox.",
+        keyLabel: "Access KEY",
+        keyPlaceholder: "Nhập KEY (tối thiểu 8 ký tự)",
+        hint: "Mẹo: nếu chưa thấy mail mới, đợi vài giây rồi thử lại.",
+        tabs: {
+          login_code: "Get code đăng nhập",
+          family_code: "Get code hộ gia đình",
+          tv_verify: "Xác minh hộ gia đình cho TV (COMMING SOON)",
+        },
+        submit: {
+          login_code: "Lấy mã đăng nhập",
+          family_code: "Lấy mã hộ gia đình",
+          tv_verify: "COMMING SOON",
+        },
+        loading: "Đang xử lý",
+        ready: "Sẵn sàng.",
+        selected: "Đã chọn: {feature}",
+        invalidKey: "KEY không hợp lệ. Vui lòng nhập ít nhất 8 ký tự.",
+        requestAborted: "Yêu cầu trước đã bị hủy để xử lý yêu cầu mới.",
+        requestFail: "Không thể kết nối API.",
+        familyExpired: "Link đã hết hiệu lực. Vui lòng Gửi lại mã.",
+        loginNoCode: "Đăng nhập thành công, nhưng chưa tìm thấy mail mã đăng nhập phù hợp.",
+        loginFound: "Đăng nhập thành công. Tìm thấy {total} mã gần nhất.",
+        familyReady: "Lấy mã hộ gia đình thành công: {code}",
+        familyTitle: "Mã hộ gia đình đã sẵn sàng.",
+        familyTitleWithCode: "Mã hộ gia đình: {code}",
+        familyButton: "Mở link nhận mã (tuỳ chọn)",
+        comingSoon: "Tính năng này đang phát triển. Vui lòng quay lại sau.",
+        table: {
+          no: "#",
+          code: "Mã",
+          time: "Thời gian nhận",
+          subject: "Tiêu đề",
+        },
+        familyMetaPrefix: "Nhận lúc",
+      },
+      en: {
+        title: "Get Code Dashboard",
+        subtitle: "Quickly retrieve codes with a mailbox-linked KEY.",
+        keyLabel: "Access KEY",
+        keyPlaceholder: "Enter KEY (minimum 8 characters)",
+        hint: "Tip: if no new email appears, wait a few seconds and try again.",
+        tabs: {
+          login_code: "Get Login Code",
+          family_code: "Get Family Code",
+          tv_verify: "Verify Family for TV (COMMING SOON)",
+        },
+        submit: {
+          login_code: "Get Login Code",
+          family_code: "Get Family Code",
+          tv_verify: "COMMING SOON",
+        },
+        loading: "Processing",
+        ready: "Ready.",
+        selected: "Selected: {feature}",
+        invalidKey: "Invalid KEY. Please enter at least 8 characters.",
+        requestAborted: "Previous request was canceled to process the new one.",
+        requestFail: "Cannot connect to API.",
+        familyExpired: "This link has expired. Please request a new code.",
+        loginNoCode: "Login succeeded, but no matching login code email was found yet.",
+        loginFound: "Login succeeded. Found {total} latest code(s).",
+        familyReady: "Family code retrieved successfully: {code}",
+        familyTitle: "Family code is ready.",
+        familyTitleWithCode: "Family code: {code}",
+        familyButton: "Open Family Link (optional)",
+        comingSoon: "This feature is under development. Please check back later.",
+        table: {
+          no: "#",
+          code: "Code",
+          time: "Received at",
+          subject: "Subject",
+        },
+        familyMetaPrefix: "Received at",
+      },
+    };
+
+    const state = {
+      lang: "vi",
+      feature: "login_code",
+      isSubmitting: false,
+      loadingTimer: null,
+      controller: null,
+      familyUrl: "",
+    };
+
+    const form = document.getElementById("check-form");
+    const titleEl = document.getElementById("title");
+    const subtitleEl = document.getElementById("subtitle");
+    const keyLabelEl = document.getElementById("key-label");
+    const keyInputEl = document.getElementById("key-input");
+    const submitBtn = document.getElementById("submit-btn");
+    const loadingBox = document.getElementById("loading-box");
+    const loadingText = document.getElementById("loading-text");
+    const loadingMeta = document.getElementById("loading-meta");
+    const loadingFill = document.getElementById("loading-fill");
+    const resultEl = document.getElementById("result");
+    const tabBtns = Array.from(document.querySelectorAll(".tab-btn"));
+    const langBtns = Array.from(document.querySelectorAll(".lang-btn"));
+    const codesBox = document.getElementById("codes-box");
+    const codesBody = document.getElementById("codes-body");
+    const familyBox = document.getElementById("family-link-box");
+    const familyTitle = document.getElementById("family-link-title");
+    const familyBtn = document.getElementById("family-link-btn");
+    const familyMeta = document.getElementById("family-link-meta");
+    const comingSoonNote = document.getElementById("coming-soon-note");
+    const hintEl = document.getElementById("hint");
+    const thNo = document.getElementById("th-no");
+    const thCode = document.getElementById("th-code");
+    const thTime = document.getElementById("th-time");
+    const thSubject = document.getElementById("th-subject");
+
+    function t(path, vars = {}) {
+      const parts = path.split(".");
+      let value = I18N[state.lang];
+      for (const p of parts) value = value?.[p];
+      let text = String(value ?? "");
+      for (const [k, v] of Object.entries(vars)) {
+        text = text.replaceAll(`{${k}}`, String(v));
+      }
+      return text;
+    }
+
+    function escapeHtml(text) {
+      return String(text ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function formatDateTime(input) {
+      const dt = new Date(input);
+      if (Number.isNaN(dt.getTime())) return "-";
+      return new Intl.DateTimeFormat(state.lang === "vi" ? "vi-VN" : "en-US", {
+        dateStyle: "short",
+        timeStyle: "medium",
+        timeZone: "Asia/Ho_Chi_Minh",
+      }).format(dt);
+    }
+
+    function setResult(type, text) {
+      resultEl.className = "result ready" + (type ? ` ${type}` : "");
+      resultEl.textContent = text;
+    }
+
+    function setLoading(isLoading) {
+      if (!isLoading) {
+        if (state.loadingTimer) {
+          clearInterval(state.loadingTimer);
+          state.loadingTimer = null;
+        }
+        loadingBox.style.display = "none";
+        loadingFill.style.width = "0%";
+        submitBtn.classList.remove("loading");
+        return;
+      }
+
+      if (state.loadingTimer) clearInterval(state.loadingTimer);
+      const startedAt = Date.now();
+      const targetMs = 12000;
+
+      loadingText.textContent = `${t("loading")}: ${t(`tabs.${state.feature}`)}`;
+      loadingMeta.textContent = "0s | 0%";
+      loadingFill.style.width = "0%";
+      loadingBox.style.display = "block";
+      submitBtn.classList.add("loading");
+
+      state.loadingTimer = setInterval(() => {
+        const elapsed = Date.now() - startedAt;
+        const sec = Math.floor(elapsed / 1000);
+        const progress = Math.min(96, Math.floor((elapsed / targetMs) * 96));
+        loadingMeta.textContent = `${sec}s | ${progress}%`;
+        loadingFill.style.width = `${progress}%`;
+      }, 140);
+    }
+
+    function hideCodes() {
+      codesBox.style.display = "none";
+      codesBody.innerHTML = "";
+    }
+
+    function hideFamily() {
+      familyBox.style.display = "none";
+      familyMeta.textContent = "";
+      state.familyUrl = "";
+    }
+
+    function hideComingSoon() {
+      comingSoonNote.style.display = "none";
+      comingSoonNote.textContent = "";
+    }
+
+    function renderI18n() {
+      const tabs = I18N[state.lang].tabs;
+      const table = I18N[state.lang].table;
+
+      titleEl.textContent = t("title");
+      subtitleEl.textContent = t("subtitle");
+      keyLabelEl.textContent = t("keyLabel");
+      keyInputEl.placeholder = t("keyPlaceholder");
+      submitBtn.textContent = t(`submit.${state.feature}`);
+      hintEl.textContent = t("hint");
+      familyTitle.textContent = t("familyTitle");
+      familyBtn.textContent = t("familyButton");
+      comingSoonNote.textContent = t("comingSoon");
+      thNo.textContent = table.no;
+      thCode.textContent = table.code;
+      thTime.textContent = table.time;
+      thSubject.textContent = table.subject;
+
+      tabBtns.forEach((btn) => {
+        const feature = btn.dataset.feature;
+        btn.textContent = tabs[feature];
+      });
+
+      langBtns.forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.lang === state.lang);
+      });
+
+      if (!resultEl.textContent.trim()) setResult("", t("ready"));
+    }
+
+    function switchFeature(feature) {
+      if (!I18N.vi.tabs[feature]) return;
+      state.feature = feature;
+      tabBtns.forEach((btn) => btn.classList.toggle("active", btn.dataset.feature === feature));
+      submitBtn.textContent = t(`submit.${feature}`);
+      hideCodes();
+      hideFamily();
+      hideComingSoon();
+      submitBtn.disabled = false;
+      if (feature === "tv_verify") {
+        comingSoonNote.style.display = "block";
+        submitBtn.disabled = true;
+      }
+      setResult("warn", feature === "tv_verify" ? t("comingSoon") : t("selected", { feature: t(`tabs.${feature}`) }));
+    }
+
+    async function requestJson(url, body, signal) {
+      const resp = await fetch(`${API_BASE}${url}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal,
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const detail = data && typeof data.detail === "object" ? data.detail : data;
+        const err = new Error(detail?.message || t("requestFail"));
+        err.status = resp.status;
+        err.errorCode = detail?.error || "request_failed";
+        throw err;
+      }
+      return data;
+    }
+
+    async function runLoginCode(key, signal) {
+      const data = await requestJson("/api/code/login-codes", { key }, signal);
+      if (!Array.isArray(data.items) || data.items.length === 0) {
+        hideCodes();
+        setResult("warn", t("loginNoCode"));
+        return;
+      }
+
+      codesBody.innerHTML = data.items.map((item, idx) => `<tr>
+        <td>${idx + 1}</td>
+        <td><strong>${escapeHtml(item.code)}</strong></td>
+        <td>${escapeHtml(formatDateTime(item.received_at))}</td>
+        <td>${escapeHtml(item.subject || "-")}</td>
+      </tr>`).join("");
+      codesBox.style.display = "block";
+      setResult("ok", t("loginFound", { total: data.total ?? data.items.length }));
+    }
+
+    async function runFamilyCode(key, signal) {
+      const data = await requestJson("/api/code/family-link", { key }, signal);
+      const code = String(data.code || "").trim();
+      if (!/^\d{4}$/.test(code)) {
+        throw new Error(state.lang === "vi" ? "Không tách được mã 4 số từ link Netflix." : "Cannot extract 4-digit code from Netflix link.");
+      }
+      state.familyUrl = data.url;
+      familyTitle.textContent = t("familyTitleWithCode", { code });
+      familyMeta.textContent = `${t("familyMetaPrefix")}: ${formatDateTime(data.received_at)}${data.subject ? ` | ${data.subject}` : ""}`;
+      familyBox.style.display = "block";
+      setResult("ok", t("familyReady", { code }));
+    }
+
+    langBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.lang = btn.dataset.lang === "en" ? "en" : "vi";
+        document.documentElement.lang = state.lang;
+        renderI18n();
+        setResult("", t("selected", { feature: t(`tabs.${state.feature}`) }));
+      });
+    });
+
+    tabBtns.forEach((btn) => {
+      btn.addEventListener("click", () => switchFeature(btn.dataset.feature || "login_code"));
+    });
+
+    familyBtn.addEventListener("click", () => {
+      if (state.familyUrl) window.location.href = state.familyUrl;
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (state.isSubmitting) return;
+
+      const key = keyInputEl.value.trim();
+      if (key.length < 8) {
+        setResult("error", t("invalidKey"));
+        return;
+      }
+      if (state.feature === "tv_verify") {
+        setResult("warn", t("comingSoon"));
+        return;
+      }
+
+      if (state.controller) state.controller.abort();
+      const controller = new AbortController();
+      state.controller = controller;
+
+      state.isSubmitting = true;
+      submitBtn.disabled = true;
+      hideCodes();
+      hideFamily();
+      setLoading(true);
+      setResult("", "");
+
+      try {
+        if (state.feature === "login_code") {
+          await runLoginCode(key, controller.signal);
+        } else {
+          await runFamilyCode(key, controller.signal);
+        }
+      } catch (error) {
+        if (error.name === "AbortError") {
+          setResult("warn", t("requestAborted"));
+        } else {
+          const friendlyMessage = error.errorCode === "family_link_expired" ? t("familyExpired") : (error.message || t("requestFail"));
+          const statusPrefix = error.errorCode === "family_link_expired" ? "" : (error.status ? `[HTTP ${error.status}] ` : "");
+          setResult("error", `${statusPrefix}${friendlyMessage}`);
+        }
+      } finally {
+        state.isSubmitting = false;
+        submitBtn.disabled = false;
+        setLoading(false);
+      }
+    });
+
+    renderI18n();
+    switchFeature("login_code");
+  </script>
+</body>
+</html>

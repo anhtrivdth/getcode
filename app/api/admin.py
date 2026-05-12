@@ -98,9 +98,54 @@ def _save_netflix_payload(db: Session, key_id: int, payload_text: str) -> None:
     db.commit()
 
 
+def _extract_netflix_cookie_from_json(raw_session: str) -> str | None:
+    try:
+        parsed = json.loads(raw_session)
+    except Exception:
+        return None
+
+    items = None
+    if isinstance(parsed, list):
+        items = parsed
+    elif isinstance(parsed, dict):
+        if isinstance(parsed.get("cookies"), list):
+            items = parsed.get("cookies")
+        elif isinstance(parsed.get("data"), list):
+            items = parsed.get("data")
+
+    if not isinstance(items, list):
+        return None
+
+    cookie_map: dict[str, str] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "")).strip()
+        value = str(item.get("value", "")).strip()
+        if name in {"NetflixId", "SecureNetflixId"} and value:
+            cookie_map[name] = value
+
+    parts = []
+    if cookie_map.get("NetflixId"):
+        parts.append(f"NetflixId={cookie_map['NetflixId']}")
+    if cookie_map.get("SecureNetflixId"):
+        parts.append(f"SecureNetflixId={cookie_map['SecureNetflixId']}")
+    return "; ".join(parts) if parts else None
+
+
 def _extract_netflix_cookie_header(raw_session: str) -> str:
+    raw = raw_session.strip()
+    if not raw:
+        return ""
+
+    # Support JSON cookie exports (array or {"cookies":[...]} formats).
+    if raw.startswith("[") or raw.startswith("{"):
+        extracted = _extract_netflix_cookie_from_json(raw)
+        if extracted:
+            return extracted
+
     parts: list[str] = []
-    for token in raw_session.split(";"):
+    for token in raw.split(";"):
         item = token.strip()
         if "=" not in item:
             continue
@@ -111,7 +156,11 @@ def _extract_netflix_cookie_header(raw_session: str) -> str:
             parts.append(f"{key}={value}")
     if parts:
         return "; ".join(parts)
-    return raw_session.strip()
+    return raw
+
+
+def _has_netflix_session_cookie(cookie_header: str) -> bool:
+    return "NetflixId=" in cookie_header or "SecureNetflixId=" in cookie_header
 
 
 def _check_netflix_cookie_alive(session_value: str) -> tuple[bool, str]:
@@ -121,8 +170,12 @@ def _check_netflix_cookie_alive(session_value: str) -> tuple[bool, str]:
     )
     headers = {
         "User-Agent": user_agent,
-        "Cookie": _extract_netflix_cookie_header(session_value),
     }
+    cookie_header = _extract_netflix_cookie_header(session_value)
+    if not _has_netflix_session_cookie(cookie_header):
+        return False, "Netflix session khong dung dinh dang. Hay dán NetflixId/SecureNetflixId hoac JSON cookie export."
+    headers["Cookie"] = cookie_header
+
     try:
         with httpx.Client(follow_redirects=True, timeout=20.0, headers=headers) as client:
             resp = client.get("https://www.netflix.com/browse")
@@ -273,17 +326,21 @@ def simple_test_netflix_login(payload: dict, db: Session = Depends(get_db)):
 @router.post("/simple/netflix-session-sync")
 def simple_sync_netflix_session(payload: dict, db: Session = Depends(get_db)):
     key_plain = str(payload.get("key", "")).strip()
-    netflix_session = str(payload.get("netflix_session", "")).strip()
+    netflix_session_raw = str(payload.get("netflix_session", "")).strip()
+    netflix_session = _extract_netflix_cookie_header(netflix_session_raw)
 
     if len(key_plain) < 8:
         raise HTTPException(
             status_code=400,
             detail={"error": "invalid_key", "message": "KEY must be at least 8 characters."},
         )
-    if len(netflix_session) < 20:
+    if len(netflix_session) < 20 or not _has_netflix_session_cookie(netflix_session):
         raise HTTPException(
             status_code=400,
-            detail={"error": "invalid_session", "message": "Netflix session is too short."},
+            detail={
+                "error": "invalid_session",
+                "message": "Netflix session invalid. Use 'NetflixId=...; SecureNetflixId=...' or JSON cookie export.",
+            },
         )
 
     key_row = _find_key_by_plain(db, key_plain)

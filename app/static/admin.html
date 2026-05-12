@@ -499,15 +499,7 @@
 
       <section class="module" data-module="netflix" hidden>
         <h3>Liên Kết Netflix Session</h3>
-        <p>Dùng KEY đã tạo để đăng nhập Netflix thủ công hoặc dán cookie session để lưu trực tiếp, sau đó kiểm tra LIVE/DIE.</p>
-        <form id="netflix-form">
-          <label>KEY
-            <input id="netflix-key" name="key" required minlength="8" placeholder="Nhập đúng KEY đã tạo" />
-          </label>
-          <button id="start-login-btn" type="submit" class="secondary-btn">Đăng nhập thủ công và tự lưu session</button>
-        </form>
-
-        <div id="session-status" class="status">Sẵn sàng.</div>
+        <p>Dùng KEY đã tạo để dán cookie session và lưu trực tiếp, sau đó kiểm tra LIVE/DIE.</p>
         <section class="sub-block">
           <h4>Dán Cookie Session Thủ Công</h4>
           <p>Dùng cho server không có desktop: dán theo mẫu <code>NetflixId=...; SecureNetflixId=...</code>.</p>
@@ -592,14 +584,11 @@
     }
 
     const imapForm = document.getElementById("imap-form");
-    const netflixForm = document.getElementById("netflix-form");
     const netflixSessionForm = document.getElementById("netflix-session-form");
-    const netflixKeyInput = document.getElementById("netflix-key");
     const netflixSessionKeyInput = document.getElementById("netflix-session-key");
     const netflixSessionInput = document.getElementById("netflix-session-input");
     const checkAllSessionsBtn = document.getElementById("check-all-sessions-btn");
     const imapStatusEl = document.getElementById("imap-status");
-    const sessionStatusEl = document.getElementById("session-status");
     const sessionSyncStatusEl = document.getElementById("session-sync-status");
     const netflixBulkStatusEl = document.getElementById("netflix-bulk-status");
     const imapRowsEl = document.getElementById("imap-rows");
@@ -614,17 +603,12 @@
     const moduleEls = Array.from(document.querySelectorAll(".module"));
     const moduleButtons = Array.from(document.querySelectorAll("[data-module-target]"));
 
-    let manualJobTimer = null;
     let latestRows = [];
     const sessionHealthMap = new Map();
 
     function setStatus(el, text, isError = false) {
       el.textContent = text;
       el.className = "status " + (isError ? "err" : "ok");
-    }
-
-    function getNetflixKey() {
-      return (netflixKeyInput.value || "").trim();
     }
 
     function getNetflixSessionKey() {
@@ -694,9 +678,6 @@
 
       netflixRowsEl.innerHTML = rows.map((r) => {
         const health = getSessionHealth(r.id, r.has_netflix_credentials);
-        const reloginBtn = health.cls === "die"
-          ? `<button type="button" class="table-action-btn relogin" data-action="relogin-key" data-key="${r.key}">Đăng nhập lại</button>`
-          : "";
         return `
         <tr>
           <td>${r.id}</td>
@@ -708,7 +689,6 @@
           </td>
           <td>${formatSessionUpdatedAt(r.session_updated_at)}</td>
           <td>
-            ${reloginBtn}
             <button type="button" class="table-action-btn delete" data-action="delete-key" data-key-id="${r.id}" data-key-label="${r.key}">Xóa</button>
           </td>
         </tr>
@@ -788,29 +768,9 @@
       await api(`/api/admin/keys/${keyId}`, { method: "DELETE" });
       sessionHealthMap.delete(Number(keyId));
       setStatus(imapStatusEl, `Đã xóa KEY ${keyLabel || keyId}.`);
-      setStatus(sessionStatusEl, `Đã xóa KEY ${keyLabel || keyId}.`);
+      setStatus(sessionSyncStatusEl, `Đã xóa KEY ${keyLabel || keyId}.`);
       setStatus(netflixBulkStatusEl, `Đã xóa KEY ${keyLabel || keyId}.`);
       await loadRows();
-    }
-
-    async function startManualLoginForKey(keyValue) {
-      setStatus(sessionStatusEl, `Đang mở đăng nhập Netflix cho KEY: ${keyValue}...`);
-      const tab = window.open("https://www.netflix.com/vn/login", "_blank", "noopener,noreferrer");
-      if (!tab) {
-        setStatus(sessionStatusEl, "Trinh duyet da chan popup. Hay cho phep popup va thu lai.", true);
-      }
-      const related = latestRows.find((row) => row.key === keyValue);
-      if (related) {
-        sessionHealthMap.set(related.id, { status: "checking", message: "Đang cập nhật session..." });
-        renderQuickManageTables(latestRows);
-      }
-      const result = await api("/api/admin/simple/netflix-login-manual/start", {
-        method: "POST",
-        body: JSON.stringify({ key: keyValue })
-      });
-      if (!result) return;
-      setStatus(sessionStatusEl, `[${result.status}] ${result.message}\njob_id: ${result.job_id}`);
-      await pollManualJob(result.job_id);
     }
 
     async function syncNetflixSessionForKey(keyValue, sessionValue) {
@@ -821,7 +781,6 @@
       });
       if (!result) return;
       setStatus(sessionSyncStatusEl, `OK: ${result.message}\nKEY: ${result.key}`);
-      setStatus(sessionStatusEl, `Đã lưu cookie session cho KEY: ${result.key}`);
       await loadRows();
       const related = latestRows.find((row) => row.key === keyValue);
       if (related) {
@@ -890,43 +849,6 @@
       setStatus(netflixBulkStatusEl, `Hoàn tất check. LIVE: ${liveCount} | DIE: ${dieCount}`, dieCount > 0);
     }
 
-    function stopManualPoll() {
-      if (manualJobTimer) {
-        clearInterval(manualJobTimer);
-        manualJobTimer = null;
-      }
-    }
-
-    async function pollManualJob(jobId) {
-      stopManualPoll();
-      manualJobTimer = setInterval(async () => {
-        try {
-          const job = await api(`/api/admin/simple/netflix-login-manual/${jobId}`);
-          if (!job) return;
-          const isError = job.status === "error" || job.status === "timeout";
-          setStatus(sessionStatusEl, `[${job.status}] ${job.message}\nKEY: ${job.key}`, isError);
-          const related = latestRows.find((row) => row.key === job.key);
-          if (related) {
-            if (job.status === "queued" || job.status === "running") {
-              sessionHealthMap.set(related.id, { status: "checking", message: "Đang cập nhật session..." });
-            } else if (isError) {
-              sessionHealthMap.set(related.id, { status: "die", message: job.message });
-            } else {
-              sessionHealthMap.set(related.id, { status: "unknown", message: "Đã cập nhật session, bấm check để xác nhận." });
-            }
-            renderQuickManageTables(latestRows);
-          }
-          if (job.status !== "queued" && job.status !== "running") {
-            stopManualPoll();
-            await loadRows();
-          }
-        } catch (err) {
-          stopManualPoll();
-          setStatus(sessionStatusEl, String(err.message || err), true);
-        }
-      }, 2000);
-    }
-
     moduleButtons.forEach((btn) => {
       btn.addEventListener("click", () => {
         const target = btn.dataset.moduleTarget;
@@ -964,14 +886,8 @@
           await deleteKeyById(keyId, keyLabel);
           return;
         }
-
-        if (action === "relogin-key") {
-          if (!keyValue) return;
-          await startManualLoginForKey(keyValue);
-          setStatus(netflixBulkStatusEl, `Đang đăng nhập lại cho KEY ${keyValue}...`);
-        }
       } catch (err) {
-        setStatus(sessionStatusEl, String(err.message || err), true);
+        setStatus(sessionSyncStatusEl, String(err.message || err), true);
       }
     });
 
@@ -1005,20 +921,6 @@
       }
     });
 
-    netflixForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const keyValue = getNetflixKey();
-      if (!keyValue) {
-        setStatus(sessionStatusEl, "Vui lòng nhập KEY trước.", true);
-        return;
-      }
-      try {
-        await startManualLoginForKey(keyValue);
-      } catch (err) {
-        setStatus(sessionStatusEl, String(err.message || err), true);
-      }
-    });
-
     netflixSessionForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       const keyValue = getNetflixSessionKey();
@@ -1032,9 +934,6 @@
         return;
       }
       try {
-        if (!netflixKeyInput.value.trim()) {
-          netflixKeyInput.value = keyValue;
-        }
         await syncNetflixSessionForKey(keyValue, sessionValue);
       } catch (err) {
         setStatus(sessionSyncStatusEl, String(err.message || err), true);
@@ -1048,7 +947,7 @@
         if (currentModule === "imap") {
           setStatus(imapStatusEl, "Đã tải lại danh sách.");
         } else if (currentModule === "netflix") {
-          setStatus(sessionStatusEl, "Đã tải lại danh sách.");
+          setStatus(sessionSyncStatusEl, "Đã tải lại danh sách.");
           setStatus(netflixBulkStatusEl, "Đã tải lại danh sách session.");
         } else {
           setStatus(imapStatusEl, "Đã tải lại danh sách.");

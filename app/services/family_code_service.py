@@ -53,11 +53,31 @@ def _looks_like_family_mail(mail: ImapMail) -> bool:
     sender_norm = _normalize_text(mail.sender)
     if "netflix" not in subject_norm and "netflix" not in sender_norm and "netflix" not in body_norm:
         return False
-    if "ma truy cap netflix tam thoi cua ban" in subject_norm:
-        return True
-    if "ma truy cap tam thoi cua ban" in body_norm and "nhan ma" in body_norm:
-        return True
-    return False
+
+    # Vietnamese markers
+    vi_markers = (
+        "ma truy cap netflix tam thoi cua ban",
+        "ma truy cap tam thoi cua ban",
+        "nhan ma",
+        "xac minh",
+        "ho gia dinh",
+    )
+    # English markers (some Netflix templates are in English)
+    en_markers = (
+        "temporary access code",
+        "use this code",
+        "enter this code",
+        "verify",
+        "household",
+    )
+    for marker in (*vi_markers, *en_markers):
+        if marker in subject_norm or marker in body_norm:
+            return True
+
+    # Fallback: for Netflix mails, if body has 4-digit pattern and a link, treat as candidate.
+    has_4_digit = bool(re.search(r"(?<!\d)\d{4}(?!\d)", body_norm))
+    has_link = "http://" in body_norm or "https://" in body_norm
+    return has_4_digit and has_link
 
 
 def _extract_links_from_html(html_body: str) -> list[tuple[str, str]]:

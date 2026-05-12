@@ -223,7 +223,7 @@ async def get_family_link(payload: ResolveCodeRequest, db: Session = Depends(get
     session_value = _get_session_cookie_for_key(db, key_row)
 
     try:
-        # Single fast scan for low latency.
+        # Fast scan for low latency first.
         result = get_latest_family_link(
             db=db,
             key_plain=payload.key,
@@ -232,6 +232,20 @@ async def get_family_link(payload: ResolveCodeRequest, db: Session = Depends(get
             since_minutes=180,
         )
     except FamilyCodeError as err:
+        # Fallback deep scan to reduce false 404 when email arrives with delay
+        # or user requested code earlier than 3 hours ago.
+        if err.code == "no_family_link_found":
+            try:
+                result = get_latest_family_link(
+                    db=db,
+                    key_plain=payload.key,
+                    key_row=key_row,
+                    max_messages=200,
+                    since_minutes=60 * 24 * 14,
+                )
+            except FamilyCodeError as deep_err:
+                err = deep_err
+
         http_status = status.HTTP_400_BAD_REQUEST
         if err.code == "invalid_key":
             http_status = status.HTTP_401_UNAUTHORIZED

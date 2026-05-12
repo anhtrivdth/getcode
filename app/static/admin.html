@@ -634,7 +634,7 @@
       if (!value) return "-";
       const parsed = new Date(value);
       if (Number.isNaN(parsed.getTime())) return String(value);
-      return parsed.toLocaleString("vi-VN");
+      return parsed.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
     }
 
     function getSessionHealth(keyId, hasSession) {

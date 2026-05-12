@@ -1,5 +1,6 @@
 import imaplib
 import json
+from datetime import UTC, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -26,6 +27,15 @@ from app.services.netflix_login import attempt_netflix_login
 
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(get_admin_guard)])
+HANOI_TZ = timezone(timedelta(hours=7))
+
+
+def _to_hanoi_time(dt):
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(HANOI_TZ)
 
 
 def _verify_imap_login(email_full: str, app_password: str, imap_server: str = "imap.gmail.com", imap_port: int = 993):
@@ -488,7 +498,7 @@ def simple_list(db: Session = Depends(get_db)):
                 "imap_server": mailbox.imap_server if mailbox else None,
                 "active": row.active,
                 "has_netflix_credentials": bool(nfx and nfx.active),
-                "session_updated_at": nfx.updated_at if nfx else None,
+                "session_updated_at": _to_hanoi_time(nfx.updated_at) if nfx else None,
             }
         )
     return output
@@ -695,7 +705,7 @@ def list_audit(limit: int = 100, db: Session = Depends(get_db)):
             "outcome": r.outcome,
             "code_preview": r.code_preview,
             "detail": r.detail,
-            "created_at": r.created_at,
+            "created_at": _to_hanoi_time(r.created_at),
         }
         for r in rows
     ]

@@ -7,6 +7,7 @@ import unicodedata
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from app.config import get_settings
 from app.models import AccessKey
 from app.security import decrypt_secret, hash_key
 from app.services.imap_client import ImapClient, ImapMail
@@ -24,6 +25,9 @@ class FamilyCodeError(Exception):
         super().__init__(message)
         self.code = code
         self.message = message
+
+
+settings = get_settings()
 
 
 def _normalize_text(value: str | None) -> str:
@@ -88,6 +92,13 @@ def _extract_links_from_html(html_body: str) -> list[tuple[str, str]]:
         if href:
             links.append((href, anchor_text))
     return links
+
+
+def _extract_raw_urls(text: str | None) -> list[str]:
+    if not text:
+        return []
+    urls = re.findall(r"https?://[^\s<>\"]+", text)
+    return [u.rstrip(").,") for u in urls]
 
 
 def _is_good_family_link(url: str) -> bool:
@@ -156,30 +167,32 @@ def _score_family_link(url: str, anchor_text: str | None = None) -> int:
 
 
 def _extract_family_link(mail: ImapMail) -> str | None:
+    candidates: list[tuple[str, str]] = []
+
     html_body = mail.html_body or ""
     if html_body:
-        links = _extract_links_from_html(html_body)
-        best_href = None
-        best_score = -999
-        for href, text in links:
-            score = _score_family_link(href, text)
-            if score > best_score:
-                best_score = score
-                best_href = href
-        if best_href and best_score >= 1:
-            return best_href
+        candidates.extend(_extract_links_from_html(html_body))
+        # Some templates carry verify links in script/json blocks (not only <a href>).
+        for raw_url in _extract_raw_urls(html_body):
+            candidates.append((raw_url, ""))
 
-    plain_links = re.findall(r"https?://[^\s<>\"]+", mail.body or "")
-    best_plain = None
-    best_plain_score = -999
-    for link in plain_links:
-        clean = link.rstrip(").,")
-        score = _score_family_link(clean, mail.subject or "")
-        if score > best_plain_score:
-            best_plain_score = score
-            best_plain = clean
-    if best_plain and best_plain_score >= 1:
-        return best_plain
+    for raw_url in _extract_raw_urls(mail.body or ""):
+        candidates.append((raw_url, mail.subject or ""))
+
+    if not candidates:
+        return None
+
+    best_href = None
+    best_score = -999
+    for href, text in candidates:
+        score = _score_family_link(href, text)
+        if score > best_score:
+            best_score = score
+            best_href = href
+
+    # Prefer strong matches, but still allow neutral links as fallback.
+    if best_href and best_score >= 0:
+        return best_href
     return None
 
 
@@ -202,12 +215,20 @@ def get_latest_family_link(
         port=mailbox.imap_port,
         username=mailbox.email_full,
         password=app_password,
+        preferred_mailboxes=[settings.gmail_label_family_code],
+        strict_preferred_mailboxes=True,
     )
     mails = imap.fetch_recent_mails(max_messages=max_messages, since_minutes=since_minutes)
+    fallback_link: FamilyLinkResult | None = None
     for mail in mails:
-        if not _looks_like_family_mail(mail):
-            continue
         url = _extract_family_link(mail)
-        if url:
+        if not url:
+            continue
+        if _looks_like_family_mail(mail):
             return FamilyLinkResult(url=url, received_at=mail.received_at, subject=mail.subject)
+        # Keep first link fallback if template text markers are missing.
+        if fallback_link is None:
+            fallback_link = FamilyLinkResult(url=url, received_at=mail.received_at, subject=mail.subject)
+    if fallback_link:
+        return fallback_link
     raise FamilyCodeError("no_family_link_found", "Không tìm thấy link 'Nhận mã' phù hợp trong mail hộ gia đình.")

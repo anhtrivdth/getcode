@@ -6,6 +6,7 @@ import unicodedata
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from app.config import get_settings
 from app.models import AccessKey
 from app.security import decrypt_secret, hash_key
 from app.services.imap_client import ImapClient, ImapMail
@@ -23,6 +24,9 @@ class LoginCodeError(Exception):
         super().__init__(message)
         self.code = code
         self.message = message
+
+
+settings = get_settings()
 
 
 def _normalize_text(value: str | None) -> str:
@@ -99,6 +103,8 @@ def get_recent_login_codes_for_key(db: Session, key_plain: str, limit: int = 10)
         port=mailbox.imap_port,
         username=mailbox.email_full,
         password=app_password,
+        preferred_mailboxes=[settings.gmail_label_login_code],
+        strict_preferred_mailboxes=True,
     )
     mails = imap.fetch_recent_mails(max_messages=200, since_minutes=60 * 24 * 14)
     items: list[LoginCodeRecord] = []

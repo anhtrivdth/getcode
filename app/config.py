@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     family_fast_scan_since_minutes: int = 24 * 60
     family_deep_scan_max_messages: int = 1500
     family_deep_scan_since_minutes: int = 30 * 24 * 60
+    gmail_label_login_code: str = "Netflix: Mã đăng nhập của bạn"
+    gmail_label_family_code: str = "Mã truy cập Netflix tạm thời của bạn"
+    gmail_label_tv_verify: str = "Lưu ý quan trọng: Cách cập nhật Hộ gia đình Netflix"
 
     model_config = SettingsConfigDict(
         env_file=".env",

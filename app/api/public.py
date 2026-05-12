@@ -2,6 +2,7 @@
 import re
 import html
 from datetime import UTC, timedelta, timezone
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 import httpx
@@ -111,6 +112,7 @@ def _get_session_cookie_for_key(db: Session, key_row: AccessKey) -> str:
 
 
 def _extract_family_code_from_html(page_html: str) -> tuple[str | None, str | None]:
+    raw_html = page_html or ""
     text = re.sub(r"<[^>]+>", " ", page_html or "")
     text = html.unescape(text)
     text = re.sub(r"\s+", " ", text).strip()
@@ -150,7 +152,68 @@ def _extract_family_code_from_html(page_html: str) -> tuple[str | None, str | No
                 snippet = window[max(0, match.start() - 36) : min(len(window), match.end() + 36)]
                 source = f"marker={marker}; snippet={snippet}"
                 return code, source
+
+    # Fallback for modern pages where code is rendered from script/JSON payload.
+    script_patterns = (
+        r'"(?:temporaryAccessCode|verificationCode|accessCode)"\s*:\s*"(\d{4})"',
+        r'"(?:temporaryAccessCode|verificationCode|accessCode)"\s*:\s*(\d{4})',
+        r'data-(?:code|verification-code|access-code)\s*=\s*["\'](\d{4})["\']',
+        r'(?i)(?:use|enter)\s+(?:this\s+)?code[^0-9]{0,40}(\d{4})',
+    )
+    for pattern in script_patterns:
+        match = re.search(pattern, raw_html)
+        if not match:
+            continue
+        code = (match.group(1) or "").strip()
+        if len(code) == 4 and code.isdigit():
+            start = max(0, match.start() - 40)
+            end = min(len(raw_html), match.end() + 40)
+            snippet = re.sub(r"\s+", " ", raw_html[start:end])
+            return code, f"script_pattern={pattern}; snippet={snippet}"
+
+    # Last resort: pick a unique 4-digit token from page text, excluding common years.
+    candidates = re.findall(r"(?<!\d)(\d{4})(?!\d)", text)
+    filtered = [c for c in candidates if c not in {"2023", "2024", "2025", "2026", "2027", "2028", "2029", "2030"}]
+    unique = list(dict.fromkeys(filtered))
+    if len(unique) == 1:
+        return unique[0], "fallback_unique_4digit_from_text"
+
+    if len(unique) > 1:
+        keyword_text = text.lower()
+        for marker in ("code", "ma", "otp", "verify"):
+            pos = keyword_text.find(marker)
+            if pos < 0:
+                continue
+            window = keyword_text[max(0, pos - 200) : pos + 400]
+            local = re.findall(r"(?<!\d)(\d{4})(?!\d)", window)
+            local_filtered = [c for c in local if c not in {"2023", "2024", "2025", "2026", "2027", "2028", "2029", "2030"}]
+            if len(local_filtered) == 1:
+                return local_filtered[0], f"fallback_keyword_window={marker}"
+
     return None, None
+
+
+def _extract_family_code_from_url(url: str) -> str | None:
+    try:
+        parsed = urlparse(url)
+        query = parse_qs(parsed.query)
+        for key in ("code", "pin", "otp", "verifyCode", "verificationCode"):
+            values = query.get(key) or []
+            for value in values:
+                v = str(value).strip()
+                if re.fullmatch(r"\d{4}", v):
+                    return v
+        # Try fragment too.
+        fragment_pairs = parse_qs(parsed.fragment)
+        for key in ("code", "pin", "otp", "verifyCode", "verificationCode"):
+            values = fragment_pairs.get(key) or []
+            for value in values:
+                v = str(value).strip()
+                if re.fullmatch(r"\d{4}", v):
+                    return v
+    except Exception:
+        return None
+    return None
 
 
 def _is_expired_family_link_page(page_html: str) -> bool:
@@ -186,9 +249,17 @@ def _resolve_family_code_via_session_link(url: str, session_value: str) -> tuple
                 return None, f"Netflix verify link returned HTTP {resp.status_code}.", None
             if _is_expired_family_link_page(resp.text):
                 return None, "Netflix verify link has expired. Please request a new family code.", None
+            final_url = str(resp.url)
+            url_code = _extract_family_code_from_url(final_url)
+            if url_code:
+                return url_code, "ok", "source=final_url_query"
+            final_lower = final_url.lower()
+            if any(token in final_lower for token in ("/login", "/signin")):
+                return None, "Netflix redirected to login page. Session may be invalid for this verify link.", None
+
             code, source = _extract_family_code_from_html(resp.text)
             if not code:
-                return None, "Cannot extract 4-digit code from Netflix verify page.", source
+                return None, f"Cannot extract 4-digit code from Netflix verify page. final_url={final_url}", source
             return code, "ok", source
     except Exception as exc:
         return None, f"Failed to open Netflix verify link: {exc}", None

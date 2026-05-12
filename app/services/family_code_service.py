@@ -101,26 +101,85 @@ def _is_good_family_link(url: str) -> bool:
         "notificationsettings",
         "privacy",
         "help.netflix.com",
+        "lkid=url_logo",
+        "lnktrk=evo",
     ]
     return not any(token in u for token in bad_tokens)
+
+
+def _score_family_link(url: str, anchor_text: str | None = None) -> int:
+    u = url.strip().lower()
+    t = _normalize_text(anchor_text)
+    if not _is_good_family_link(u):
+        return -999
+
+    score = 0
+    positive_url_tokens = (
+        "travel/verify",
+        "household",
+        "temporary",
+        "verify",
+        "code",
+        "/account/",
+    )
+    positive_text_tokens = (
+        "nhan ma",
+        "lay ma",
+        "ma tam thoi",
+        "ma truy cap",
+        "get code",
+        "use this code",
+        "enter this code",
+        "verification code",
+        "temporary access",
+    )
+    negative_url_tokens = (
+        "/browse",
+        "/login",
+        "/signup",
+        "/kids",
+        "lkid=url_logo",
+        "lnktrk=evo",
+    )
+
+    for token in positive_url_tokens:
+        if token in u:
+            score += 3
+    for token in positive_text_tokens:
+        if token in t:
+            score += 5
+    for token in negative_url_tokens:
+        if token in u:
+            score -= 8
+
+    return score
 
 
 def _extract_family_link(mail: ImapMail) -> str | None:
     html_body = mail.html_body or ""
     if html_body:
         links = _extract_links_from_html(html_body)
+        best_href = None
+        best_score = -999
         for href, text in links:
-            if "nhan ma" in _normalize_text(text) and _is_good_family_link(href):
-                return href
-        for href, _ in links:
-            if _is_good_family_link(href):
-                return href
+            score = _score_family_link(href, text)
+            if score > best_score:
+                best_score = score
+                best_href = href
+        if best_href and best_score >= 1:
+            return best_href
 
     plain_links = re.findall(r"https?://[^\s<>\"]+", mail.body or "")
+    best_plain = None
+    best_plain_score = -999
     for link in plain_links:
         clean = link.rstrip(").,")
-        if _is_good_family_link(clean):
-            return clean
+        score = _score_family_link(clean, mail.subject or "")
+        if score > best_plain_score:
+            best_plain_score = score
+            best_plain = clean
+    if best_plain and best_plain_score >= 1:
+        return best_plain
     return None
 
 

@@ -135,6 +135,19 @@ def _manual_session_capture_worker(job_id: str, key_id: int) -> None:
             _update_job(job_id, status="timeout", message="Het 300s cho dang nhap. Thu lai.")
             browser.close()
     except Exception as exc:
+        message = str(exc)
+        lowered = message.lower()
+        if "missing x server" in lowered or "$display" in lowered or "headed browser" in lowered:
+            _update_job(
+                job_id,
+                status="error",
+                message=(
+                    "Server SSH khong co giao dien (X11/DISPLAY) nen khong the mo "
+                    "Playwright headed de tu dong luu session. Can chay app tren may "
+                    "co desktop GUI hoac thiet lap virtual display de dung flow nay."
+                ),
+            )
+            return
         _update_job(job_id, status="error", message=f"Manual capture gap loi: {exc}")
 
 

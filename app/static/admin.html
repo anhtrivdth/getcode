@@ -499,7 +499,7 @@
 
       <section class="module" data-module="netflix" hidden>
         <h3>Liên Kết Netflix Session</h3>
-        <p>Dùng KEY đã tạo để đăng nhập Netflix thủ công, lưu session tự động và kiểm tra LIVE/DIE.</p>
+        <p>Dùng KEY đã tạo để đăng nhập Netflix thủ công hoặc dán cookie session để lưu trực tiếp, sau đó kiểm tra LIVE/DIE.</p>
         <form id="netflix-form">
           <label>KEY
             <input id="netflix-key" name="key" required minlength="8" placeholder="Nhập đúng KEY đã tạo" />
@@ -508,6 +508,20 @@
         </form>
 
         <div id="session-status" class="status">Sẵn sàng.</div>
+        <section class="sub-block">
+          <h4>Dán Cookie Session Thủ Công</h4>
+          <p>Dùng cho server không có desktop: dán theo mẫu <code>NetflixId=...; SecureNetflixId=...</code>.</p>
+          <form id="netflix-session-form">
+            <label>KEY
+              <input id="netflix-session-key" name="key" required minlength="8" placeholder="Nhập đúng KEY đã tạo" />
+            </label>
+            <label>Netflix Session Cookie
+              <textarea id="netflix-session-input" name="netflix_session" required placeholder="NetflixId=...; SecureNetflixId=..."></textarea>
+            </label>
+            <button id="sync-session-btn" type="submit" class="primary-btn">Lưu Cookie Session</button>
+          </form>
+          <div id="session-sync-status" class="status">Sẵn sàng dán cookie session.</div>
+        </section>
         <section class="sub-block">
           <div class="sub-head">
             <h4>KEY + Netflix Session đã liên kết</h4>
@@ -579,10 +593,14 @@
 
     const imapForm = document.getElementById("imap-form");
     const netflixForm = document.getElementById("netflix-form");
+    const netflixSessionForm = document.getElementById("netflix-session-form");
     const netflixKeyInput = document.getElementById("netflix-key");
+    const netflixSessionKeyInput = document.getElementById("netflix-session-key");
+    const netflixSessionInput = document.getElementById("netflix-session-input");
     const checkAllSessionsBtn = document.getElementById("check-all-sessions-btn");
     const imapStatusEl = document.getElementById("imap-status");
     const sessionStatusEl = document.getElementById("session-status");
+    const sessionSyncStatusEl = document.getElementById("session-sync-status");
     const netflixBulkStatusEl = document.getElementById("netflix-bulk-status");
     const imapRowsEl = document.getElementById("imap-rows");
     const netflixRowsEl = document.getElementById("netflix-rows");
@@ -607,6 +625,19 @@
 
     function getNetflixKey() {
       return (netflixKeyInput.value || "").trim();
+    }
+
+    function getNetflixSessionKey() {
+      return (netflixSessionKeyInput.value || "").trim();
+    }
+
+    function normalizeNetflixSession(raw) {
+      let value = String(raw || "").trim();
+      if (!value) return "";
+      if (value.toLowerCase().startsWith("cookie:")) {
+        value = value.slice(7).trim();
+      }
+      return value;
     }
 
     function renderStats(rows) {
@@ -764,6 +795,10 @@
 
     async function startManualLoginForKey(keyValue) {
       setStatus(sessionStatusEl, `Đang mở đăng nhập Netflix cho KEY: ${keyValue}...`);
+      const tab = window.open("https://www.netflix.com/vn/login", "_blank", "noopener,noreferrer");
+      if (!tab) {
+        setStatus(sessionStatusEl, "Trinh duyet da chan popup. Hay cho phep popup va thu lai.", true);
+      }
       const related = latestRows.find((row) => row.key === keyValue);
       if (related) {
         sessionHealthMap.set(related.id, { status: "checking", message: "Đang cập nhật session..." });
@@ -776,6 +811,23 @@
       if (!result) return;
       setStatus(sessionStatusEl, `[${result.status}] ${result.message}\njob_id: ${result.job_id}`);
       await pollManualJob(result.job_id);
+    }
+
+    async function syncNetflixSessionForKey(keyValue, sessionValue) {
+      setStatus(sessionSyncStatusEl, `Đang lưu cookie session cho KEY: ${keyValue}...`);
+      const result = await api("/api/admin/simple/netflix-session-sync", {
+        method: "POST",
+        body: JSON.stringify({ key: keyValue, netflix_session: sessionValue })
+      });
+      if (!result) return;
+      setStatus(sessionSyncStatusEl, `OK: ${result.message}\nKEY: ${result.key}`);
+      setStatus(sessionStatusEl, `Đã lưu cookie session cho KEY: ${result.key}`);
+      await loadRows();
+      const related = latestRows.find((row) => row.key === keyValue);
+      if (related) {
+        sessionHealthMap.set(related.id, { status: "unknown", message: "Đã lưu session, bấm check để xác nhận LIVE/DIE." });
+        renderQuickManageTables(latestRows);
+      }
     }
 
     async function checkSessionByRow(row) {
@@ -964,6 +1016,28 @@
         await startManualLoginForKey(keyValue);
       } catch (err) {
         setStatus(sessionStatusEl, String(err.message || err), true);
+      }
+    });
+
+    netflixSessionForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const keyValue = getNetflixSessionKey();
+      const sessionValue = normalizeNetflixSession(netflixSessionInput.value);
+      if (!keyValue) {
+        setStatus(sessionSyncStatusEl, "Vui lòng nhập KEY trước.", true);
+        return;
+      }
+      if (!sessionValue || sessionValue.length < 20) {
+        setStatus(sessionSyncStatusEl, "Cookie session quá ngắn hoặc rỗng. Dán đúng dạng NetflixId=...; SecureNetflixId=...", true);
+        return;
+      }
+      try {
+        if (!netflixKeyInput.value.trim()) {
+          netflixKeyInput.value = keyValue;
+        }
+        await syncNetflixSessionForKey(keyValue, sessionValue);
+      } catch (err) {
+        setStatus(sessionSyncStatusEl, String(err.message || err), true);
       }
     });
 

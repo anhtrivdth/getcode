@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Netflix Code</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/user.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1 class="title">Netflix Code</h1>
+      <p class="subtitle">Chọn loại mã cần lấy</p>
+
+      <div class="type-selector">
+        <button class="type-btn active" data-type="login_code">Mã đăng nhập</button>
+        <button class="type-btn" data-type="temp_access">Mã truy cập TV</button>
+        <button class="type-btn" data-type="home_update">Xác minh hộ gia đình</button>
+      </div>
+
+      <div class="input-group">
+        <input
+          id="user-key"
+          type="text"
+          placeholder="Nhập key tài khoản..."
+          autocomplete="off"
+        />
+        <button id="btn-get-code">Lấy Mã</button>
+      </div>
+
+      <div id="result" class="result-area"></div>
+    </main>
+
+    <script src="/user.js" defer></script>
+  </body>
+</html>

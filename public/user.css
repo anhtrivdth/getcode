@@ -1,0 +1,260 @@
+:root {
+  --bg: #0f1623;
+  --card: #172336;
+  --line: #2e4568;
+  --text: #eff5ff;
+  --muted: #95accf;
+  --accent: #25c2a0;
+  --danger: #ff646e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Chakra Petch", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(800px 500px at 50% 0%, #1a2d4a 0%, transparent 60%),
+    var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.container {
+  width: min(480px, 90vw);
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.title {
+  font-size: 36px;
+  margin: 0 0 8px;
+  letter-spacing: 0.04em;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin: 0 0 24px;
+  font-size: 16px;
+}
+
+.type-selector {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.type-btn {
+  border: 1px solid var(--line);
+  background: #112038;
+  color: var(--muted);
+  padding: 10px 12px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 180ms ease;
+  white-space: nowrap;
+}
+
+.type-btn.active {
+  background: linear-gradient(135deg, #1a3448, #224c58);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.type-btn:hover:not(.active) {
+  border-color: #4a6a8a;
+  color: var(--text);
+}
+
+.input-group {
+  display: flex;
+  gap: 10px;
+}
+
+.input-group input {
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #0f1d31;
+  color: var(--text);
+  font: inherit;
+  padding: 14px 16px;
+  font-size: 16px;
+}
+
+.input-group input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.input-group button {
+  border: none;
+  background: linear-gradient(135deg, #155566, #138254);
+  color: #e7fbff;
+  border-radius: 12px;
+  padding: 14px 24px;
+  font: inherit;
+  font-weight: 700;
+  font-size: 16px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.input-group button:hover {
+  filter: brightness(1.1);
+}
+
+.input-group button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.result-area {
+  margin-top: 32px;
+  min-height: 120px;
+}
+
+.result-empty {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.result-code {
+  animation: fadeUp 300ms ease;
+}
+
+.result-code .code-value {
+  font-size: 64px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: #9ff5db;
+  font-variant-numeric: tabular-nums;
+  margin: 0 0 12px;
+}
+
+.result-code .code-status {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.result-expired {
+  animation: fadeUp 300ms ease;
+}
+
+.result-expired .expired-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.result-expired .expired-text {
+  font-size: 18px;
+  color: #ffb6cb;
+  font-weight: 600;
+}
+
+.result-expired .expired-hint {
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.result-error {
+  color: var(--danger);
+  font-size: 14px;
+  animation: fadeUp 300ms ease;
+}
+
+.result-loading {
+  color: var(--muted);
+  font-size: 16px;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* TV Code Input Form */
+.tv-code-form {
+  animation: fadeUp 300ms ease;
+  text-align: center;
+}
+
+.tv-code-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 16px;
+}
+
+.tv-code-input-group {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.tv-code-input-group input {
+  width: 200px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #0f1d31;
+  color: var(--text);
+  font: inherit;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  padding: 12px 16px;
+  text-align: center;
+}
+
+.tv-code-input-group input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.tv-code-input-group button {
+  border: none;
+  background: linear-gradient(135deg, #155566, #138254);
+  color: #e7fbff;
+  border-radius: 12px;
+  padding: 12px 20px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tv-code-input-group button:hover {
+  filter: brightness(1.1);
+}
+
+.tv-code-input-group button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tv-code-status {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--muted);
+  min-height: 20px;
+}
+
+.tv-code-status.error {
+  color: var(--danger);
+}

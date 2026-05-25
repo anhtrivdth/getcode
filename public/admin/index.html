@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bảng Điều Khiển Netflix</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/admin/styles.css" />
+  </head>
+  <body>
+    <div class="bg-shape bg-shape-a"></div>
+    <div class="bg-shape bg-shape-b"></div>
+
+    <main class="layout">
+      <header class="topbar">
+        <h1>Bảng Điều Khiển Quản Trị</h1>
+        <p>Đăng nhập IMAP và xem thư theo 3 nhãn Netflix cố định</p>
+      </header>
+
+      <section class="tabs">
+        <button class="tab-btn active" data-tab="imap">Thư IMAP</button>
+        <button class="tab-btn" data-tab="netflix">Phiên Netflix</button>
+      </section>
+
+      <section class="panel active" id="tab-imap">
+        <div class="card">
+          <h2>Đăng Nhập IMAP (Mặc Định)</h2>
+          <p class="hint">
+            IMAP mặc định:
+            <strong>imap.gmail.com:993 (SSL/TLS)</strong>
+          </p>
+          <div class="grid grid-login">
+            <label>
+              Email/Tài khoản
+              <input id="imap-user" placeholder="you@gmail.com" />
+            </label>
+            <label>
+              App Password
+              <input id="imap-pass" type="password" />
+            </label>
+            <label>
+              Key IMAP (bắt buộc)
+              <input id="imap-key" placeholder="acc-main, acc-khach, ..." />
+            </label>
+          </div>
+          <div class="actions">
+            <button id="btn-imap-login">Đăng Nhập</button>
+          </div>
+          <pre id="imap-test-result" class="result"></pre>
+        </div>
+
+        <div class="card" id="imap-accounts-card">
+          <div class="imap-accounts-head">
+            <h2>Tài Khoản Đã Lưu</h2>
+            <button id="btn-imap-accounts-clear" class="btn-danger-sm" title="Xóa toàn bộ tài khoản đã lưu">Xóa Tất Cả</button>
+          </div>
+          <p class="hint">Bấm vào tài khoản để điền sẵn và đăng nhập ngay.</p>
+          <div id="imap-account-list" class="imap-account-list">
+            <div class="imap-account-empty">Chưa có tài khoản nào được lưu.</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Danh Sách Nhãn (Chỉ 3 Nhãn)</h2>
+          <div id="label-list" class="label-list"></div>
+          <p id="selected-label" class="selected-label">Chưa chọn nhãn.</p>
+        </div>
+
+        <div class="card">
+          <h2>Thư Theo Nhãn Đã Chọn</h2>
+          <p class="hint">Bấm vào nhãn phía trên để tải thư của nhãn đó.</p>
+          <div id="mail-list" class="mail-list"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="tab-netflix">
+        <div class="card">
+          <h2>Đăng Nhập Phiên Thủ Công</h2>
+          <label>
+            Chuỗi phiên Netflix (cookie)
+            <textarea
+              id="nf-cookie"
+              rows="6"
+              placeholder="Dán cookie dạng chuỗi (NetflixId=...; SecureNetflixId=...) hoặc JSON array export từ extension."
+            ></textarea>
+          </label>
+          <label>
+            Key định danh phiên (ví dụ: acc-main, acc-khach, acc-2026-05)
+            <input
+              id="nf-key"
+              placeholder="Nhập key để lưu và nhận biết tài khoản"
+            />
+          </label>
+          <div class="actions">
+            <button id="btn-cookie-save">Lưu</button>
+          </div>
+          <div class="session-list-wrap">
+            <div class="session-list-head">
+              <h3>Danh Sách Phiên Đã Lưu</h3>
+              <div class="session-list-tools">
+                <button id="btn-cookie-check">Check Session Đã Lưu</button>
+                <button id="btn-cookie-clear-all">Xóa Danh Sách</button>
+              </div>
+            </div>
+            <div class="session-table-wrap">
+              <table class="session-table">
+                <thead>
+                  <tr>
+                    <th>Key</th>
+                    <th>Cập Nhật Gần Nhất</th>
+                    <th>Tình Trạng</th>
+                    <th>Xóa</th>
+                  </tr>
+                </thead>
+                <tbody id="nf-session-list"></tbody>
+              </table>
+            </div>
+          </div>
+          <pre id="cookie-result" class="result"></pre>
+        </div>
+      </section>
+    </main>
+
+    <script src="/admin/app.js" defer></script>
+  </body>
+</html>

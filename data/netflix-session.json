@@ -1,33 +1,4 @@
 {
-  "activeSessionId": "1778650656880-vmx026c4",
-  "sessions": [
-    {
-      "id": "1778650656880-vmx026c4",
-      "key": "ammaru1703@gmail.com",
-      "cookie": "netflix-sans-normal-3-loaded=true; SecureNetflixId=v%3D3%26mac%3DAQEAEQABABQfT-r5NxFiC43xIPKryRV5NwFwrHiSkvM.%26dt%3D1778646623633; OTSessionTracking=87b6a5c0-0104-4e96-a291-092c11350111; gsid=6ae1685b-9741-4b11-bb0f-6de77ee6e178; NetflixId=ct%3DBgjHlOvcAxKrA6WADxvQZoEAvOR83FoL0MwYBKvZaqMHoUVmC6ujMdpOaQopcmXQ9Nsj1iPXq0LKmibiQO5WO_uScyr7Mzl1_SyGdhzKUhrKfbuNi6dF_dxfk3EWdu2RshEQpVnaOOmyS_CtYbJPemSyMlhCqKodGrBnqnn5y7gZpU5iM2dXcpaCNWDN_5mQsEOYb-TdgXNHZT_uMq7IXCJUyOPehEanttWuE_YgUet0drM2SZO616Jce9pgShu9iBBqAeBbYF2n5-slpG9dIUIbk7_eCVBje_q13VnkPQuWiCa0PWZS7MulBAzjDTwND2mRDJjUqU38TkF3HvP9DnEA8x7cUIJWiYRxt3Edq1Vpm9MvQ5s7J4fqEhxzOpVjPkoVGQcQiaTSgAcOhJK0EaU-XAiY23lBLG-d2wVRxs1Nw0Rcc3zv-WBm0l9ZU4jzR3PNGVlBFroUqyDwdCFZdjzDj3VUHZTZ8J4lgX6daNVR8sU3FwfaMM7I2SoQHZ_8fHXqvyPOzDt3JYTf6MWEgpfd8cb1UYT-i_F_CCTyvz10PahzOIcxSi_hzqraidVHId2GYcQYBiIOCgz6UbsIeWY0IapCEig.%26ch%3DAQEAEAABABRx6J_phh9nGF8d6NOeZr6ockR-zyjacU0.%26v%3D3%26pg%3DIEWBPNRUCJHTRJI5YOK4XEY5CA; pas=%7B%22supplementals%22%3A%7B%22muted%22%3Atrue%7D%7D; OptanonConsent=isGpcEnabled=0&datestamp=Wed+May+13+2026+11%3A48%3A08+GMT%2B0700+(Gi%E1%BB%9D+%C4%90%C3%B4ng+D%C6%B0%C6%A1ng)&version=202604.1.0&browserGpcFlag=0&isDntEnabled=0&isIABGlobal=false&hosts=&consentId=5be4eeb6-7b92-48c9-94ea-a8fad63aa8e8&interactionCount=1&isAnonUser=1&prevHadToken=0&landingPath=NotLandingPage&groups=C0001%3A1%2CC0002%3A1%2CC0003%3A1%2CC0004%3A1&crTime=1777471232651&AwaitingReconsent=false; netflix-sans-bold-3-loaded=true; nfvdid=BQFmAAEBEE46ieMPpu-k9IrIjqaTTgFgwoL5E6h06C3OGHgYlySZh2M8Ig7Q10B5bGxMFddg7KB3PNGgW3Q0ImgdSR4gmAPyYN4TSE96zpNHkCtFJ-3bhHAmtLClyXTpXO2LipKkSBR4MHIHG0mz4yM32lz0hy-X",
-      "cookieFormat": "json_array",
-      "cookieCount": 9,
-      "rejectedCount": 1,
-      "updatedAt": "2026-05-13T05:37:36.880Z",
-      "lastCheck": {
-        "status": "LIVE",
-        "httpStatus": 200,
-        "redirectedTo": null,
-        "account": {
-          "finalUrl": "https://www.netflix.com/account",
-          "httpStatus": 200,
-          "title": "Cài đặt tài khoản - Netflix",
-          "emailHint": null,
-          "profileNameHint": "Gia\\x20\\u0110\\u00ECnh\\x20Ti\\u1EBFn\\x20M\\u00EC",
-          "memberSinceHint": null
-        },
-        "note": "Cookie có vẻ còn sống.",
-        "checkedAt": "2026-05-13T08:31:48.094Z"
-      },
-      "imap": {
-        "user": "ammaru1703@gmail.com",
-        "pass": "mqlwwjecflyetkgb"
-      }
-    }
-  ]
+  "activeSessionId": null,
+  "sessions": []
 }

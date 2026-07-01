@@ -1823,13 +1823,13 @@ app.post("/api/submit-tv-code", async (req, res) => {
 
 await loadNetflixSessionFromDisk();
 
-app.use("/admin", express.static(path.join(__dirname, "public", "admin")));
+app.use("/p8xK29panel", express.static(path.join(__dirname, "public", "p8xK29panel")));
 app.use(express.static(path.join(__dirname, "public")));
 
 app.use((_req, res) => {
   // Admin SPA fallback
-  if (_req.path.startsWith("/admin")) {
-    return res.sendFile(path.join(__dirname, "public", "admin", "index.html"));
+  if (_req.path.startsWith("/p8xK29panel")) {
+    return res.sendFile(path.join(__dirname, "public", "p8xK29panel", "index.html"));
   }
   // User page fallback
   res.sendFile(path.join(__dirname, "public", "index.html"));

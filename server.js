@@ -385,6 +385,44 @@ function buildNetflixHeaders(cookie) {
   return headers;
 }
 
+function mergeCookieHeaders(...cookieHeaders) {
+  const byName = new Map();
+  for (const header of cookieHeaders) {
+    const normalized = normalizeCookieHeaderString(header);
+    if (!normalized) continue;
+    for (const item of normalized.split(";")) {
+      const part = String(item || "").trim();
+      if (!part) continue;
+      const idx = part.indexOf("=");
+      if (idx <= 0) continue;
+      const name = part.slice(0, idx).trim();
+      const value = part.slice(idx + 1).trim();
+      if (!name) continue;
+      byName.set(name, `${name}=${value}`);
+    }
+  }
+  return Array.from(byName.values()).join("; ");
+}
+
+function extractCookieHeaderFromResponse(response) {
+  const setCookieHeaders =
+    typeof response?.headers?.getSetCookie === "function"
+      ? response.headers.getSetCookie()
+      : [];
+
+  if (!Array.isArray(setCookieHeaders) || !setCookieHeaders.length) {
+    return "";
+  }
+
+  const cookiePairs = [];
+  for (const setCookie of setCookieHeaders) {
+    const pair = String(setCookie || "").split(";")[0]?.trim() || "";
+    if (pair.includes("=")) cookiePairs.push(pair);
+  }
+
+  return normalizeCookieHeaderString(cookiePairs.join("; "));
+}
+
 function ensureActiveSession() {
   if (!netflixStore.sessions.length) {
     netflixStore.activeSessionId = null;
@@ -945,6 +983,24 @@ function extractHtmlAttributeValue(tag, attribute) {
   const match = String(tag || "").match(pattern);
   if (!match) return "";
   return String(match[1] || match[2] || match[3] || "").trim();
+}
+
+function extractHiddenInputValues(html) {
+  const values = {};
+  const raw = String(html || "");
+  const inputRegex = /<input\b[^>]*>/gi;
+  let match;
+
+  while ((match = inputRegex.exec(raw)) !== null) {
+    const tag = match[0];
+    const type = normalizeSearchText(extractHtmlAttributeValue(tag, "type"));
+    if (type !== "hidden") continue;
+    const name = extractHtmlAttributeValue(tag, "name");
+    if (!name) continue;
+    values[name] = extractHtmlAttributeValue(tag, "value");
+  }
+
+  return values;
 }
 
 function hasConfirmUpdateButton(html) {
@@ -1760,10 +1816,16 @@ app.post("/api/get-code", async (req, res) => {
 // === USER API: Submit mã TV ===
 app.post("/api/submit-tv-code", async (req, res) => {
   const key = String(req.body?.key || "").trim();
-  const code = String(req.body?.code || "").trim();
+  const code = String(req.body?.code || "")
+    .replace(/\D+/g, "")
+    .slice(0, 8);
 
   if (!key || !code) {
     return res.status(400).json({ ok: false, message: "Thiếu key hoặc mã TV." });
+  }
+
+  if (code.length !== 8) {
+    return res.status(400).json({ ok: false, message: "Mã TV phải đủ 8 số." });
   }
 
   const session = getSessionByKey(key);
@@ -1774,25 +1836,74 @@ app.post("/api/submit-tv-code", async (req, res) => {
   const cookie = session.cookie;
 
   try {
-    // Netflix /tv2 submit flow: POST to /tv2/pin with the code
-    const submitResponse = await fetch("https://www.netflix.com/tv2/pin", {
+    const tv2Response = await fetch("https://www.netflix.com/tv2", {
+      method: "GET",
+      redirect: "follow",
+      headers: buildNetflixHeaders(cookie),
+    });
+
+    const tv2Html = await tv2Response.text();
+    const tv2Text = stripHtmlToText(tv2Html);
+    const tv2Fields = extractHiddenInputValues(tv2Html);
+    const flowCookie = extractCookieHeaderFromResponse(tv2Response);
+    const submitCookie = mergeCookieHeaders(cookie, flowCookie);
+
+    if (
+      !tv2Response.ok ||
+      /login|sign.?in/i.test(tv2Response.url) ||
+      /sign in|log in/i.test(normalizeLookupText(tv2Text))
+    ) {
+      return res.json({
+        ok: true,
+        success: false,
+        message: "Cookie Netflix không còn hợp lệ để đăng nhập TV.",
+      });
+    }
+
+    if (!tv2Fields.authURL) {
+      return res.json({
+        ok: true,
+        success: false,
+        message: "Netflix đã đổi form nhập mã TV, không đọc được authURL để submit.",
+        finalUrl: tv2Response.url,
+      });
+    }
+
+    const form = new URLSearchParams();
+    form.set("flow", tv2Fields.flow || "websiteSignUp");
+    form.set("authURL", tv2Fields.authURL);
+    form.set("flowMode", tv2Fields.flowMode || "enterTvLoginRendezvousCode");
+    form.set("withFields", tv2Fields.withFields || "tvLoginRendezvousCode,isTvUrl2");
+    form.set("code", tv2Fields.code || "");
+    form.set("tvLoginRendezvousCode", code);
+    form.set("isTvUrl2", tv2Fields.isTvUrl2 || "true");
+    form.set("action", tv2Fields.action || "nextAction");
+
+    const submitResponse = await fetch(tv2Response.url || "https://www.netflix.com/tv2", {
       method: "POST",
       redirect: "follow",
       headers: {
-        ...buildNetflixHeaders(cookie),
+        ...buildNetflixHeaders(submitCookie),
         "Content-Type": "application/x-www-form-urlencoded",
+        Origin: "https://www.netflix.com",
+        Referer: tv2Response.url || "https://www.netflix.com/tv2",
       },
-      body: `pin=${encodeURIComponent(code)}`,
+      body: form.toString(),
     });
 
     const resultHtml = await submitResponse.text();
     const resultText = stripHtmlToText(resultHtml);
+    const normalizedResultText = normalizeLookupText(resultText);
 
     // Kiểm tra kết quả
     const isSuccess = /success|thành công|đã kết nối|connected|signed in|device.*added/i.test(resultText) ||
       submitResponse.url.includes("/browse") ||
-      submitResponse.url.includes("/tv2/success");
-    const isInvalidCode = /invalid|không hợp lệ|sai mã|incorrect|try again|thử lại/i.test(resultText);
+      submitResponse.url.includes("/tv2/success") ||
+      submitResponse.url.includes("/tv/out/success");
+    const isInvalidCode =
+      /invalid|không hợp lệ|sai mã|incorrect|try again|thử lại/i.test(resultText) ||
+      normalizedResultText.includes("that code wasn't right") ||
+      normalizedResultText.includes("that code wasnt right");
 
     if (isSuccess) {
       return res.json({
@@ -1813,8 +1924,9 @@ app.post("/api/submit-tv-code", async (req, res) => {
     return res.json({
       ok: true,
       success: false,
-      message: "Không xác định được kết quả. Vui lòng thử lại.",
+      message: "Netflix trả về màn hình trung gian chưa được nhận diện.",
       finalUrl: submitResponse.url,
+      preview: normalizeText(resultText, 240),
     });
   } catch (error) {
     return res.status(500).json({ ok: false, message: error?.message || "Lỗi khi gửi mã TV." });
@@ -1839,4 +1951,3 @@ const port = Number(process.env.PORT || 3000);
 app.listen(port, () => {
   console.log(`Admin UI running at http://localhost:${port}`);
 });
-

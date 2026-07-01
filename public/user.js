@@ -83,12 +83,22 @@ function showTvSuccess() {
   `;
 }
 
+function normalizeTvCode(input) {
+  return String(input || "").replace(/\D+/g, "").slice(0, 8);
+}
+
+function formatTvCode(input) {
+  const digits = normalizeTvCode(input);
+  if (digits.length <= 4) return digits;
+  return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+}
+
 function showTvCodeInput() {
   resultArea.innerHTML = `
     <div class="tv-code-form">
       <p class="tv-code-title">Nhập mã hiển thị trên TV</p>
       <div class="tv-code-input-group">
-        <input id="tv-code-input" type="text" maxlength="8" placeholder="Nhập mã TV..." autocomplete="off" />
+        <input id="tv-code-input" type="text" maxlength="9" inputmode="numeric" placeholder="1234-5678" autocomplete="off" />
         <button id="tv-code-submit">Xác nhận</button>
       </div>
       <div id="tv-code-status" class="tv-code-status"></div>
@@ -100,9 +110,16 @@ function showTvCodeInput() {
   const tvStatus = document.getElementById("tv-code-status");
 
   tvSubmit.addEventListener("click", async () => {
-    const code = tvInput.value.trim();
+    const code = normalizeTvCode(tvInput.value);
+    tvInput.value = formatTvCode(code);
     if (!code) {
-      tvStatus.textContent = "Vui lòng nhập mã.";
+      tvStatus.textContent = "Vui lòng nhập mã TV.";
+      tvStatus.className = "tv-code-status error";
+      return;
+    }
+
+    if (code.length !== 8) {
+      tvStatus.textContent = "Mã TV phải đủ 8 số, ví dụ 4094-1021.";
       tvStatus.className = "tv-code-status error";
       return;
     }
@@ -129,7 +146,10 @@ function showTvCodeInput() {
       if (data.success) {
         showTvSuccess();
       } else {
-        tvStatus.textContent = data.message || "Mã không hợp lệ.";
+        const extra = [data.finalUrl, data.preview].filter(Boolean).join(" | ");
+        tvStatus.textContent = extra
+          ? `${data.message || "Mã không hợp lệ."} (${extra})`
+          : data.message || "Mã không hợp lệ.";
         tvStatus.className = "tv-code-status error";
       }
     } catch (error) {
@@ -137,6 +157,13 @@ function showTvCodeInput() {
       tvStatus.className = "tv-code-status error";
     } finally {
       tvSubmit.disabled = false;
+    }
+  });
+
+  tvInput.addEventListener("input", () => {
+    const formatted = formatTvCode(tvInput.value);
+    if (tvInput.value !== formatted) {
+      tvInput.value = formatted;
     }
   });
 

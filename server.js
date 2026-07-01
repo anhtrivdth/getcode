@@ -31,6 +31,8 @@ const LABEL_TYPE = {
   TEMP_ACCESS: "temp_access",
   LOGIN_CODE: "login_code",
 };
+const TV_CODE_INVALID_OR_USED_MESSAGE =
+  "Mã TV không đúng hoặc đã được sử dụng. Vui lòng thử lại.\nLưu ý: liên hệ seller nếu bạn chắc chắn mã nhập đúng nhưng vẫn lỗi.";
 
 const netflixStore = {
   activeSessionId: null,
@@ -1894,6 +1896,7 @@ app.post("/api/submit-tv-code", async (req, res) => {
     const resultHtml = await submitResponse.text();
     const resultText = stripHtmlToText(resultHtml);
     const normalizedResultText = normalizeLookupText(resultText);
+    const normalizedFinalUrl = normalizeLookupText(submitResponse.url || "");
 
     // Kiểm tra kết quả
     const isSuccess = /success|thành công|đã kết nối|connected|signed in|device.*added/i.test(resultText) ||
@@ -1903,7 +1906,13 @@ app.post("/api/submit-tv-code", async (req, res) => {
     const isInvalidCode =
       /invalid|không hợp lệ|sai mã|incorrect|try again|thử lại/i.test(resultText) ||
       normalizedResultText.includes("that code wasn't right") ||
-      normalizedResultText.includes("that code wasnt right");
+      normalizedResultText.includes("that code wasnt right") ||
+      normalizedResultText.includes("that code was not right") ||
+      normalizedResultText.includes("code entry failed") ||
+      normalizedResultText.includes("failed to retrieve tv login rendezvous code") ||
+      normalizedFinalUrl.includes("/notfound") ||
+      normalizedFinalUrl.includes("prev=https%3a%2f%2fwww.netflix.com%2ftv2%2fpin") ||
+      normalizedFinalUrl.includes("prev=https://www.netflix.com/tv2/pin");
 
     if (isSuccess) {
       return res.json({
@@ -1917,14 +1926,14 @@ app.post("/api/submit-tv-code", async (req, res) => {
       return res.json({
         ok: true,
         success: false,
-        message: "Mã không hợp lệ. Vui lòng kiểm tra lại mã trên TV.",
+        message: TV_CODE_INVALID_OR_USED_MESSAGE,
       });
     }
 
     return res.json({
       ok: true,
       success: false,
-      message: "Netflix trả về màn hình trung gian chưa được nhận diện.",
+      message: TV_CODE_INVALID_OR_USED_MESSAGE,
       finalUrl: submitResponse.url,
       preview: normalizeText(resultText, 240),
     });

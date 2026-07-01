@@ -146,10 +146,9 @@ function showTvCodeInput() {
       if (data.success) {
         showTvSuccess();
       } else {
-        const extra = [data.finalUrl, data.preview].filter(Boolean).join(" | ");
-        tvStatus.textContent = extra
-          ? `${data.message || "Mã không hợp lệ."} (${extra})`
-          : data.message || "Mã không hợp lệ.";
+        tvStatus.textContent =
+          data.message ||
+          "Mã TV không đúng hoặc đã được sử dụng. Vui lòng thử lại.\nLưu ý: liên hệ seller nếu bạn chắc chắn mã nhập đúng nhưng vẫn lỗi.";
         tvStatus.className = "tv-code-status error";
       }
     } catch (error) {

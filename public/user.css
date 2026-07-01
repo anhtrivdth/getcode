@@ -253,6 +253,7 @@ body {
   font-size: 14px;
   color: var(--muted);
   min-height: 20px;
+  white-space: pre-line;
 }
 
 .tv-code-status.error {

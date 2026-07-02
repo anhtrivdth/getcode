@@ -1005,6 +1005,61 @@ function extractHiddenInputValues(html) {
   return values;
 }
 
+function hasNamedInputField(html, fieldName) {
+  const pattern = new RegExp(
+    `\\bname\\s*=\\s*(?:"${fieldName}"|'${fieldName}'|${fieldName})\\b`,
+    "i"
+  );
+  return pattern.test(String(html || ""));
+}
+
+function resolveHtmlFormActionUrl(action, baseUrl) {
+  const rawAction = String(action || "").trim();
+  const fallbackUrl = String(baseUrl || "https://www.netflix.com/tv2").trim();
+
+  if (!rawAction) return fallbackUrl;
+
+  try {
+    return new URL(rawAction, fallbackUrl).toString();
+  } catch {
+    return fallbackUrl;
+  }
+}
+
+function extractTvCodeSubmitForm(html, pageUrl) {
+  const raw = String(html || "");
+  const formRegex = /<form\b[^>]*>[\s\S]*?<\/form>/gi;
+  let match;
+
+  while ((match = formRegex.exec(raw)) !== null) {
+    const formHtml = match[0];
+    const openTagMatch = formHtml.match(/<form\b[^>]*>/i);
+    if (!openTagMatch) continue;
+
+    const hiddenValues = extractHiddenInputValues(formHtml);
+    const hasTvCodeField = hasNamedInputField(formHtml, "tvLoginRendezvousCode");
+    const hasLegacyPinField = hasNamedInputField(formHtml, "pin");
+    const looksLikeTvCodeForm =
+      hasTvCodeField ||
+      hasLegacyPinField ||
+      Boolean(hiddenValues.authURL) ||
+      /tv2|enter code|ma tv|ma truy cap/i.test(stripHtmlToText(formHtml));
+
+    if (!looksLikeTvCodeForm) continue;
+
+    const action = extractHtmlAttributeValue(openTagMatch[0], "action");
+
+    return {
+      actionUrl: resolveHtmlFormActionUrl(action, pageUrl),
+      hiddenValues,
+      hasTvCodeField,
+      hasLegacyPinField,
+    };
+  }
+
+  return null;
+}
+
 function hasConfirmUpdateButton(html) {
   const target = normalizeSearchText("Xac nhan cap nhat");
   const raw = String(html || "");
@@ -1846,7 +1901,7 @@ app.post("/api/submit-tv-code", async (req, res) => {
 
     const tv2Html = await tv2Response.text();
     const tv2Text = stripHtmlToText(tv2Html);
-    const tv2Fields = extractHiddenInputValues(tv2Html);
+    const tv2Form = extractTvCodeSubmitForm(tv2Html, tv2Response.url || "https://www.netflix.com/tv2");
     const flowCookie = extractCookieHeaderFromResponse(tv2Response);
     const submitCookie = mergeCookieHeaders(cookie, flowCookie);
 
@@ -1862,26 +1917,50 @@ app.post("/api/submit-tv-code", async (req, res) => {
       });
     }
 
-    if (!tv2Fields.authURL) {
+    if (!tv2Form) {
       return res.json({
         ok: true,
         success: false,
-        message: "Netflix đã đổi form nhập mã TV, không đọc được authURL để submit.",
+        message: "Netflix đã đổi form nhập mã TV, không tìm được form submit.",
         finalUrl: tv2Response.url,
       });
     }
 
-    const form = new URLSearchParams();
-    form.set("flow", tv2Fields.flow || "websiteSignUp");
-    form.set("authURL", tv2Fields.authURL);
-    form.set("flowMode", tv2Fields.flowMode || "enterTvLoginRendezvousCode");
-    form.set("withFields", tv2Fields.withFields || "tvLoginRendezvousCode,isTvUrl2");
-    form.set("code", tv2Fields.code || "");
-    form.set("tvLoginRendezvousCode", code);
-    form.set("isTvUrl2", tv2Fields.isTvUrl2 || "true");
-    form.set("action", tv2Fields.action || "nextAction");
+    const submitUrl = isAllowedNetflixUrl(tv2Form.actionUrl)
+      ? tv2Form.actionUrl
+      : (tv2Response.url || "https://www.netflix.com/tv2");
+    const usesLegacyPinFlow =
+      tv2Form.hasLegacyPinField ||
+      /\/tv2\/pin(?:[/?#]|$)/i.test(submitUrl);
 
-    const submitResponse = await fetch(tv2Response.url || "https://www.netflix.com/tv2", {
+    if (!usesLegacyPinFlow && !tv2Form.hiddenValues.authURL) {
+      return res.json({
+        ok: true,
+        success: false,
+        message: "Netflix đã đổi form nhập mã TV, không đọc được authURL để submit.",
+        finalUrl: submitUrl,
+      });
+    }
+
+    const form = new URLSearchParams();
+    for (const [name, value] of Object.entries(tv2Form.hiddenValues || {})) {
+      form.set(name, value ?? "");
+    }
+
+    if (usesLegacyPinFlow) {
+      form.set("pin", code);
+    }
+
+    if (tv2Form.hasTvCodeField || !usesLegacyPinFlow) {
+      if (!form.has("flow")) form.set("flow", "websiteSignUp");
+      if (!form.has("flowMode")) form.set("flowMode", "enterTvLoginRendezvousCode");
+      if (!form.has("withFields")) form.set("withFields", "tvLoginRendezvousCode,isTvUrl2");
+      if (!form.has("isTvUrl2")) form.set("isTvUrl2", "true");
+      if (!form.has("action")) form.set("action", "nextAction");
+      form.set("tvLoginRendezvousCode", code);
+    }
+
+    const submitResponse = await fetch(submitUrl, {
       method: "POST",
       redirect: "follow",
       headers: {
@@ -1895,24 +1974,45 @@ app.post("/api/submit-tv-code", async (req, res) => {
 
     const resultHtml = await submitResponse.text();
     const resultText = stripHtmlToText(resultHtml);
+    const resultForm = extractTvCodeSubmitForm(resultHtml, submitResponse.url || submitUrl);
     const normalizedResultText = normalizeLookupText(resultText);
     const normalizedFinalUrl = normalizeLookupText(submitResponse.url || "");
-
-    // Kiểm tra kết quả
-    const isSuccess = /success|thành công|đã kết nối|connected|signed in|device.*added/i.test(resultText) ||
+    const hasRetryForm = Boolean(resultForm);
+    const explicitSuccess =
+      /success|thành công|đăng nhập thành công|đã kết nối|connected|signed in|sign in complete|device.*added|your tv is now signed in|you can now watch/i.test(resultText) ||
+      normalizedResultText.includes("now signed in") ||
+      normalizedResultText.includes("ready to watch") ||
+      normalizedResultText.includes("tv is now signed in");
+    const successByUrl =
       submitResponse.url.includes("/browse") ||
       submitResponse.url.includes("/tv2/success") ||
       submitResponse.url.includes("/tv/out/success");
-    const isInvalidCode =
+    const explicitInvalid =
       /invalid|không hợp lệ|sai mã|incorrect|try again|thử lại/i.test(resultText) ||
       normalizedResultText.includes("that code wasn't right") ||
       normalizedResultText.includes("that code wasnt right") ||
       normalizedResultText.includes("that code was not right") ||
       normalizedResultText.includes("code entry failed") ||
-      normalizedResultText.includes("failed to retrieve tv login rendezvous code") ||
+      normalizedResultText.includes("failed to retrieve tv login rendezvous code");
+    const invalidByUrl =
       normalizedFinalUrl.includes("/notfound") ||
       normalizedFinalUrl.includes("prev=https%3a%2f%2fwww.netflix.com%2ftv2%2fpin") ||
       normalizedFinalUrl.includes("prev=https://www.netflix.com/tv2/pin");
+    const stillWaitingForCode =
+      hasRetryForm &&
+      (
+        normalizedResultText.includes("enter code") ||
+        normalizedResultText.includes("enter the code") ||
+        normalizedResultText.includes("tvloginrendezvouscode") ||
+        normalizedResultText.includes("ma tv") ||
+        normalizedResultText.includes("ma truy cap") ||
+        normalizedResultText.includes("nhap ma") ||
+        normalizedResultText.includes("watch on your tv")
+      );
+
+    // Kiểm tra kết quả: ưu tiên success rõ ràng trước, tránh false negative
+    const isSuccess = explicitSuccess || successByUrl;
+    const isInvalidCode = !isSuccess && (explicitInvalid || invalidByUrl || stillWaitingForCode);
 
     if (isSuccess) {
       return res.json({

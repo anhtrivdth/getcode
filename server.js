@@ -1,18 +1,38 @@
 ﻿import express from "express";
+import "dotenv/config";
+import helmet from "helmet";
+import { rateLimit } from "express-rate-limit";
 import path from "path";
 import { fileURLToPath } from "url";
-import { mkdir, readFile, writeFile } from "fs/promises";
+import { mkdir, readFile, rename, unlink, writeFile } from "fs/promises";
+import { createHash, randomBytes, randomUUID, timingSafeEqual, createCipheriv, createDecipheriv } from "crypto";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const NETFLIX_SESSION_FILE = path.join(
+const NETFLIX_SESSION_FILE = path.resolve(
   __dirname,
-  "data",
-  "netflix-session.json"
+  process.env.NETFLIX_SESSION_FILE || path.join("data", "netflix-session.json")
 );
+const ACCESS_KEYS_FILE = path.resolve(
+  __dirname,
+  process.env.ACCESS_KEYS_FILE || path.join("data", "access-keys.json")
+);
+const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || "admin").trim();
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "");
+const DATA_ENCRYPTION_KEY = String(process.env.DATA_ENCRYPTION_KEY || "");
+const SECRET_PREFIX = "enc:v1";
+const ADMIN_SESSION_COOKIE = "admin_session";
+const ADMIN_SESSION_TTL_MS = Math.max(
+  15 * 60 * 1000,
+  Number(process.env.ADMIN_SESSION_HOURS || 8) * 60 * 60 * 1000
+);
+const ADMIN_COOKIE_SECURE = process.env.ADMIN_COOKIE_SECURE === "true";
+const adminSessions = new Map();
+const GETKEY_SESSION_COOKIE = "getkey_session";
+const getkeySessions = new Map();
 const NETFLIX_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 const NETFLIX_ACCEPT =
@@ -38,8 +58,502 @@ const netflixStore = {
   activeSessionId: null,
   sessions: [],
 };
+const accessKeyStore = { keys: [] };
 
+app.disable("x-powered-by");
+if (process.env.TRUST_PROXY === "true") app.set("trust proxy", 1);
+app.use(
+  helmet({
+    crossOriginEmbedderPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        "default-src": ["'self'"],
+        "script-src": ["'self'"],
+        "style-src": ["'self'", "https://fonts.googleapis.com"],
+        "font-src": ["'self'", "https://fonts.gstatic.com", "data:"],
+        "connect-src": ["'self'"],
+        "img-src": ["'self'", "data:"],
+        "object-src": ["'none'"],
+        "base-uri": ["'self'"],
+        "frame-ancestors": ["'none'"],
+      },
+    },
+    referrerPolicy: { policy: "no-referrer" },
+  })
+);
 app.use(express.json({ limit: "1mb" }));
+app.use("/api", (_req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
+
+const adminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: Number(process.env.ADMIN_RATE_LIMIT || 500),
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { ok: false, message: "Quá nhiều yêu cầu quản trị. Vui lòng thử lại sau." },
+});
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: Number(process.env.ADMIN_LOGIN_RATE_LIMIT || 10),
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { ok: false, message: "Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau." },
+});
+
+const publicApiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: Number(process.env.PUBLIC_RATE_LIMIT || 30),
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { ok: false, message: "Bạn thao tác quá nhanh. Vui lòng thử lại sau." },
+});
+
+function safeEqual(left, right) {
+  const leftHash = createHash("sha256").update(String(left)).digest();
+  const rightHash = createHash("sha256").update(String(right)).digest();
+  return timingSafeEqual(leftHash, rightHash);
+}
+
+function hashSessionToken(token) {
+  return createHash("sha256").update(String(token || "")).digest("hex");
+}
+
+function readCookie(req, name) {
+  const header = String(req.headers.cookie || "");
+  for (const part of header.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 0) continue;
+    if (part.slice(0, separator).trim() !== name) continue;
+    try {
+      return decodeURIComponent(part.slice(separator + 1).trim());
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
+function sessionCookie(value, maxAgeSeconds, name = ADMIN_SESSION_COOKIE) {
+  const parts = [
+    `${name}=${encodeURIComponent(value)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Strict",
+    `Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}`,
+  ];
+  if (ADMIN_COOKIE_SECURE) parts.push("Secure");
+  return parts.join("; ");
+}
+
+function pruneAdminSessions() {
+  const now = Date.now();
+  for (const [key, session] of adminSessions) {
+    if (session.expiresAt <= now) adminSessions.delete(key);
+  }
+}
+
+function createAdminSession() {
+  pruneAdminSessions();
+  const token = randomBytes(32).toString("base64url");
+  const csrfToken = randomBytes(24).toString("base64url");
+  const expiresAt = Date.now() + ADMIN_SESSION_TTL_MS;
+  adminSessions.set(hashSessionToken(token), {
+    username: ADMIN_USERNAME,
+    csrfToken,
+    expiresAt,
+  });
+  return { token, csrfToken, expiresAt };
+}
+
+function createGetkeySession(linkedSessionKey) {
+  const token = randomBytes(32).toString("base64url");
+  const csrfToken = randomBytes(24).toString("base64url");
+  const expiresAt = Date.now() + ADMIN_SESSION_TTL_MS;
+  getkeySessions.set(hashSessionToken(token), { linkedSessionKey, csrfToken, expiresAt });
+  return { token, csrfToken, expiresAt };
+}
+
+function getAdminSession(req) {
+  const token = readCookie(req, ADMIN_SESSION_COOKIE);
+  if (!token) return null;
+  const tokenHash = hashSessionToken(token);
+  const session = adminSessions.get(tokenHash);
+  if (!session) return null;
+  if (session.expiresAt <= Date.now()) {
+    adminSessions.delete(tokenHash);
+    return null;
+  }
+  return { ...session, tokenHash };
+}
+
+function getGetkeySession(req) {
+  const token = readCookie(req, GETKEY_SESSION_COOKIE);
+  if (!token) return null;
+  const tokenHash = hashSessionToken(token);
+  const session = getkeySessions.get(tokenHash);
+  if (!session) return null;
+  if (session.expiresAt <= Date.now()) {
+    getkeySessions.delete(tokenHash);
+    return null;
+  }
+  return { ...session, tokenHash };
+}
+
+function requireAdmin(req, res, next) {
+  const session = getAdminSession(req);
+  if (!session) return res.status(401).json({ ok: false, message: "Phiên quản trị đã hết hạn hoặc chưa đăng nhập." });
+  req.adminSession = session;
+  return next();
+}
+
+function requireCsrf(req, res, next) {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+  const submitted = String(req.headers["x-csrf-token"] || "");
+  if (!req.adminSession || !safeEqual(submitted, req.adminSession.csrfToken)) {
+    return res.status(403).json({ ok: false, message: "CSRF token không hợp lệ. Hãy tải lại trang." });
+  }
+  return next();
+}
+
+function requireGetkey(req, res, next) {
+  const session = getGetkeySession(req);
+  if (!session) return res.status(401).json({ ok: false, message: "Phiên quản lý key đã hết hạn hoặc chưa đăng nhập." });
+  req.getkeySession = session;
+  return next();
+}
+
+function requireGetkeyCsrf(req, res, next) {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+  const submitted = String(req.headers["x-csrf-token"] || "");
+  if (!req.getkeySession || !safeEqual(submitted, req.getkeySession.csrfToken)) {
+    return res.status(403).json({ ok: false, message: "CSRF token quản lý key không hợp lệ." });
+  }
+  return next();
+}
+
+function encryptionKey() {
+  if (!DATA_ENCRYPTION_KEY) return null;
+  return createHash("sha256").update(DATA_ENCRYPTION_KEY).digest();
+}
+
+function encryptSecret(value) {
+  const plaintext = String(value || "");
+  if (!plaintext) return "";
+  const key = encryptionKey();
+  if (!key) throw new Error("Server chưa cấu hình DATA_ENCRYPTION_KEY.");
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return [SECRET_PREFIX, iv.toString("base64url"), tag.toString("base64url"), encrypted.toString("base64url")].join(":");
+}
+
+function decryptSecret(value) {
+  const stored = String(value || "");
+  if (!stored || !stored.startsWith(`${SECRET_PREFIX}:`)) return stored;
+  const key = encryptionKey();
+  if (!key) throw new Error("Cần DATA_ENCRYPTION_KEY để đọc dữ liệu session đã mã hóa.");
+  const parts = stored.split(":");
+  if (parts.length !== 5) throw new Error("Dữ liệu session mã hóa không đúng định dạng.");
+  const iv = Buffer.from(parts[2], "base64url");
+  const tag = Buffer.from(parts[3], "base64url");
+  const encrypted = Buffer.from(parts[4], "base64url");
+  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8");
+}
+
+function hashAccessKey(value) {
+  return createHash("sha256").update(String(value || "")).digest("hex");
+}
+
+function normalizeAccessKey(value) {
+  return String(value || "").trim();
+}
+
+function isValidAccessKey(value) {
+  return /^sk-[A-Za-z0-9_-]{12}$/.test(normalizeAccessKey(value));
+}
+
+function accessKeyPreview(value) {
+  const key = String(value || "");
+  if (key.length <= 14) return `${key.slice(0, 4)}…`;
+  return `${key.slice(0, 9)}…${key.slice(-5)}`;
+}
+
+function accessKeyStatus(entry, now = Date.now()) {
+  if (entry.revokedAt) return "revoked";
+  if (new Date(entry.expiresAt).getTime() <= now) return "expired";
+  return "active";
+}
+
+function buildAccessKeySummary(entry) {
+  return {
+    id: entry.id,
+    label: entry.label,
+    preview: entry.preview,
+    linkedKeyPreview: accessKeyPreview(entry.linkedSessionKey),
+    status: accessKeyStatus(entry),
+    createdAt: entry.createdAt,
+    expiresAt: entry.expiresAt,
+    revokedAt: entry.revokedAt || null,
+    lastUsedAt: entry.lastUsedAt || null,
+    usageCount: Number(entry.usageCount) || 0,
+  };
+}
+
+function validateRegisteredAccessKey(value) {
+  const key = normalizeAccessKey(value);
+  if (!isValidAccessKey(key)) {
+    return { ok: false, message: "Access Key phải có dạng sk- và 12 ký tự ngẫu nhiên." };
+  }
+  const entry = accessKeyStore.keys.find((item) => item.keyHash === hashAccessKey(key));
+  if (!entry) return { ok: false, message: "Access Key chưa được đăng ký." };
+  const status = accessKeyStatus(entry);
+  if (status === "expired") return { ok: false, message: "Key đã hết hạn sử dụng." };
+  if (status === "revoked") return { ok: false, message: "Key đã bị admin thu hồi." };
+  return { ok: true, key, entry };
+}
+
+let accessKeySaveQueue = Promise.resolve();
+
+async function persistAccessKeysToDisk() {
+  await mkdir(path.dirname(ACCESS_KEYS_FILE), { recursive: true });
+  const temporaryFile = `${ACCESS_KEYS_FILE}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+  const payload = {
+    version: 2,
+    keys: accessKeyStore.keys.map((entry) => ({
+      ...entry,
+      linkedSessionKey: encryptSecret(entry.linkedSessionKey),
+    })),
+  };
+  try {
+    await writeFile(temporaryFile, JSON.stringify(payload, null, 2), {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    await rename(temporaryFile, ACCESS_KEYS_FILE);
+  } catch (error) {
+    await unlink(temporaryFile).catch(() => {});
+    throw error;
+  }
+}
+
+function saveAccessKeysToDisk() {
+  const task = accessKeySaveQueue.then(() => persistAccessKeysToDisk());
+  accessKeySaveQueue = task.catch(() => {});
+  return task;
+}
+
+async function loadAccessKeysFromDisk() {
+  try {
+    const parsed = JSON.parse(await readFile(ACCESS_KEYS_FILE, "utf8"));
+    accessKeyStore.keys = Array.isArray(parsed?.keys)
+      ? parsed.keys
+          .filter((entry) => entry && typeof entry.keyHash === "string")
+          .map((entry) => ({
+            id: String(entry.id || randomUUID()),
+            label: normalizeText(entry.label, 80) || "Không có tên",
+            keyHash: String(entry.keyHash),
+            preview: String(entry.preview || "key…"),
+            linkedSessionKey: normalizeSessionKey(decryptSecret(entry.linkedSessionKey)),
+            createdAt: String(entry.createdAt || new Date().toISOString()),
+            expiresAt: String(entry.expiresAt || new Date(0).toISOString()),
+            revokedAt: entry.revokedAt ? String(entry.revokedAt) : null,
+            lastUsedAt: entry.lastUsedAt ? String(entry.lastUsedAt) : null,
+            usageCount: Number(entry.usageCount) || 0,
+          }))
+      : [];
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      accessKeyStore.keys = [];
+      return;
+    }
+    throw new Error(`Không thể đọc dữ liệu access key: ${error?.message || error}`);
+  }
+}
+
+async function markAccessKeyUsed(entry) {
+  entry.lastUsedAt = new Date().toISOString();
+  entry.usageCount = (Number(entry.usageCount) || 0) + 1;
+  await saveAccessKeysToDisk();
+}
+
+app.get("/api/health", (_req, res) => {
+  res.json({ ok: true, service: "netflix-mail-admin", uptimeSeconds: Math.floor(process.uptime()) });
+});
+
+app.post("/api/admin/login", loginLimiter, (req, res) => {
+  if (!ADMIN_PASSWORD) {
+    return res.status(503).json({ ok: false, message: "Server chưa cấu hình ADMIN_PASSWORD." });
+  }
+  const username = String(req.body?.username || "").trim();
+  const password = String(req.body?.password || "");
+  if (!safeEqual(username, ADMIN_USERNAME) || !safeEqual(password, ADMIN_PASSWORD)) {
+    return res.status(401).json({ ok: false, message: "Tên đăng nhập hoặc mật khẩu không đúng." });
+  }
+  const session = createAdminSession();
+  res.set("Set-Cookie", sessionCookie(session.token, ADMIN_SESSION_TTL_MS / 1000));
+  return res.json({
+    ok: true,
+    authenticated: true,
+    username: ADMIN_USERNAME,
+    csrfToken: session.csrfToken,
+    expiresAt: new Date(session.expiresAt).toISOString(),
+  });
+});
+
+app.get("/api/admin/session", (req, res) => {
+  const session = getAdminSession(req);
+  if (!session) return res.json({ ok: true, authenticated: false });
+  return res.json({
+    ok: true,
+    authenticated: true,
+    username: session.username,
+    csrfToken: session.csrfToken,
+    expiresAt: new Date(session.expiresAt).toISOString(),
+  });
+});
+
+app.post("/api/admin/logout", requireAdmin, requireCsrf, (req, res) => {
+  adminSessions.delete(req.adminSession.tokenHash);
+  res.set("Set-Cookie", sessionCookie("", 0));
+  return res.json({ ok: true, authenticated: false });
+});
+
+app.post("/api/getkey/login", loginLimiter, (req, res) => {
+  const sourceKey = normalizeSessionKey(req.body?.sourceKey);
+  if (!isValidSessionKey(sourceKey)) {
+    return res.status(400).json({ ok: false, message: "Key liên kết IMAP/Netflix phải có từ 16 đến 80 ký tự." });
+  }
+  const linkedSession = getSessionByKey(sourceKey);
+  if (!linkedSession?.imap?.user || !linkedSession?.imap?.pass) {
+    return res.status(403).json({ ok: false, message: "Key này chưa được liên kết với IMAP trong Admin." });
+  }
+  const session = createGetkeySession(sourceKey);
+  const cookie = sessionCookie(session.token, ADMIN_SESSION_TTL_MS / 1000, GETKEY_SESSION_COOKIE);
+  res.set("Set-Cookie", cookie);
+  return res.json({
+    ok: true,
+    authenticated: true,
+    linkedKeyPreview: accessKeyPreview(sourceKey),
+    csrfToken: session.csrfToken,
+    expiresAt: new Date(session.expiresAt).toISOString(),
+  });
+});
+
+app.get("/api/getkey/session", (req, res) => {
+  const session = getGetkeySession(req);
+  if (!session) return res.json({ ok: true, authenticated: false });
+  return res.json({
+    ok: true,
+    authenticated: true,
+    linkedKeyPreview: accessKeyPreview(session.linkedSessionKey),
+    csrfToken: session.csrfToken,
+    expiresAt: new Date(session.expiresAt).toISOString(),
+  });
+});
+
+app.post("/api/getkey/logout", requireGetkey, requireGetkeyCsrf, (req, res) => {
+  getkeySessions.delete(req.getkeySession.tokenHash);
+  const cookie = sessionCookie("", 0, GETKEY_SESSION_COOKIE);
+  res.set("Set-Cookie", cookie);
+  return res.json({ ok: true, authenticated: false });
+});
+
+app.use(["/api/imap", "/api/netflix"], adminLimiter, requireAdmin, requireCsrf);
+app.use("/api/keys", adminLimiter, requireGetkey, requireGetkeyCsrf);
+app.use(["/api/get-code", "/api/submit-tv-code"], publicApiLimiter);
+
+app.get("/api/keys", (req, res) => {
+  const keys = accessKeyStore.keys
+    .filter((entry) => normalizeSessionLookupKey(entry.linkedSessionKey) === normalizeSessionLookupKey(req.getkeySession.linkedSessionKey))
+    .map((entry) => buildAccessKeySummary(entry))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return res.json({ ok: true, keys });
+});
+
+app.post("/api/keys", async (req, res) => {
+  const label = normalizeText(req.body?.label, 80);
+  const sourceKey = req.getkeySession.linkedSessionKey;
+  const expiresAtMs = new Date(req.body?.expiresAt).getTime();
+  if (!label) return res.status(400).json({ ok: false, message: "Vui lòng nhập tên hoặc ghi chú cho key." });
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+    return res.status(400).json({ ok: false, message: "Hạn sử dụng phải là thời điểm trong tương lai." });
+  }
+  if (!isValidSessionKey(sourceKey)) {
+    return res.status(400).json({ ok: false, message: "Key liên kết từ Admin phải có từ 16 đến 80 ký tự." });
+  }
+  const linkedSession = getSessionByKey(sourceKey);
+  if (!linkedSession) {
+    return res.status(404).json({ ok: false, message: "Không tìm thấy tài khoản được liên kết với key Admin này." });
+  }
+  if (!linkedSession.imap?.user || !linkedSession.imap?.pass) {
+    return res.status(400).json({ ok: false, message: "Key Admin này chưa được cấu hình IMAP." });
+  }
+
+  const rawKey = `sk-${randomBytes(9).toString("base64url")}`;
+  const keyHash = hashAccessKey(rawKey);
+  if (accessKeyStore.keys.some((entry) => entry.keyHash === keyHash)) {
+    return res.status(409).json({ ok: false, message: "Key này đã được đăng ký trước đó." });
+  }
+  const entry = {
+    id: randomUUID(),
+    label,
+    keyHash,
+    preview: accessKeyPreview(rawKey),
+    linkedSessionKey: sourceKey,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(expiresAtMs).toISOString(),
+    revokedAt: null,
+    lastUsedAt: null,
+    usageCount: 0,
+  };
+  accessKeyStore.keys.push(entry);
+  await saveAccessKeysToDisk();
+  return res.status(201).json({
+    ok: true,
+    key: buildAccessKeySummary(entry),
+    rawKey,
+    message: "Đã tạo Access Key ngẫu nhiên. Giá trị đầy đủ chỉ được trả về trong lần này.",
+  });
+});
+
+app.patch("/api/keys/:keyId", async (req, res) => {
+  const entry = accessKeyStore.keys.find(
+    (item) => item.id === String(req.params.keyId || "") &&
+      normalizeSessionLookupKey(item.linkedSessionKey) === normalizeSessionLookupKey(req.getkeySession.linkedSessionKey)
+  );
+  if (!entry) return res.status(404).json({ ok: false, message: "Không tìm thấy key." });
+  if (entry.revokedAt) return res.status(409).json({ ok: false, message: "Key đã thu hồi không thể kích hoạt lại." });
+  const label = normalizeText(req.body?.label, 80);
+  const expiresAtMs = new Date(req.body?.expiresAt).getTime();
+  if (!label) return res.status(400).json({ ok: false, message: "Tên key không được để trống." });
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+    return res.status(400).json({ ok: false, message: "Hạn sử dụng mới phải ở trong tương lai." });
+  }
+  entry.label = label;
+  entry.expiresAt = new Date(expiresAtMs).toISOString();
+  await saveAccessKeysToDisk();
+  return res.json({ ok: true, key: buildAccessKeySummary(entry), message: "Đã cập nhật key." });
+});
+
+app.delete("/api/keys/:keyId", async (req, res) => {
+  const entry = accessKeyStore.keys.find(
+    (item) => item.id === String(req.params.keyId || "") &&
+      normalizeSessionLookupKey(item.linkedSessionKey) === normalizeSessionLookupKey(req.getkeySession.linkedSessionKey)
+  );
+  if (!entry) return res.status(404).json({ ok: false, message: "Không tìm thấy key." });
+  if (!entry.revokedAt) {
+    entry.revokedAt = new Date().toISOString();
+    await saveAccessKeysToDisk();
+  }
+  return res.json({ ok: true, key: buildAccessKeySummary(entry), message: "Đã thu hồi key." });
+});
 
 function normalizeText(input, maxLength = 600) {
   if (!input) return "";
@@ -374,6 +888,11 @@ function normalizeSessionLookupKey(input) {
   return normalizeSessionKey(input).toLowerCase();
 }
 
+function isValidSessionKey(input) {
+  const key = normalizeSessionKey(input);
+  return key.length >= 16 && key.length <= 80;
+}
+
 function createSessionId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -459,6 +978,29 @@ function getSessionByKey(sessionKey) {
   );
 }
 
+function buildSessionAccessKeyStats(sessionKey) {
+  const lookup = normalizeSessionLookupKey(sessionKey);
+  if (!lookup) {
+    return { total: 0, active: 0, expired: 0, revoked: 0, usageCount: 0 };
+  }
+  const entries = accessKeyStore.keys.filter(
+    (entry) => normalizeSessionLookupKey(entry.linkedSessionKey) === lookup
+  );
+  const stats = {
+    total: entries.length,
+    active: 0,
+    expired: 0,
+    revoked: 0,
+    usageCount: 0,
+  };
+  for (const entry of entries) {
+    const status = accessKeyStatus(entry);
+    stats[status] += 1;
+    stats.usageCount += Number(entry.usageCount) || 0;
+  }
+  return stats;
+}
+
 function buildSessionSummary(session) {
   if (!session) {
     return {
@@ -471,6 +1013,7 @@ function buildSessionSummary(session) {
       rejectedCount: 0,
       updatedAt: null,
       lastCheck: null,
+      accessKeyStats: buildSessionAccessKeyStats(""),
     };
   }
 
@@ -484,6 +1027,7 @@ function buildSessionSummary(session) {
     rejectedCount: Number(session.rejectedCount) || 0,
     updatedAt: session.updatedAt || null,
     lastCheck: session.lastCheck || null,
+    accessKeyStats: buildSessionAccessKeyStats(session.key),
   };
 }
 
@@ -574,23 +1118,43 @@ function getNetflixSessionPayload() {
   };
 }
 
-async function saveNetflixSessionToDisk() {
+let saveQueue = Promise.resolve();
+
+async function persistNetflixSessionToDisk() {
   const payload = {
     activeSessionId: netflixStore.activeSessionId,
     sessions: netflixStore.sessions.map((session) => ({
       id: session.id,
       key: session.key,
-      cookie: session.cookie,
+      cookie: encryptSecret(session.cookie),
       cookieFormat: session.cookieFormat,
       cookieCount: session.cookieCount,
       rejectedCount: session.rejectedCount,
       updatedAt: session.updatedAt,
       lastCheck: session.lastCheck,
-      imap: session.imap || null,
+      imap: session.imap
+        ? { user: session.imap.user, pass: encryptSecret(session.imap.pass) }
+        : null,
     })),
   };
   await mkdir(path.dirname(NETFLIX_SESSION_FILE), { recursive: true });
-  await writeFile(NETFLIX_SESSION_FILE, JSON.stringify(payload, null, 2), "utf8");
+  const temporaryFile = `${NETFLIX_SESSION_FILE}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+  try {
+    await writeFile(temporaryFile, JSON.stringify(payload, null, 2), {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    await rename(temporaryFile, NETFLIX_SESSION_FILE);
+  } catch (error) {
+    await unlink(temporaryFile).catch(() => {});
+    throw error;
+  }
+}
+
+function saveNetflixSessionToDisk() {
+  const task = saveQueue.then(() => persistNetflixSessionToDisk());
+  saveQueue = task.catch(() => {});
+  return task;
 }
 
 async function loadNetflixSessionFromDisk() {
@@ -602,7 +1166,7 @@ async function loadNetflixSessionFromDisk() {
     if (Array.isArray(parsed?.sessions)) {
       for (const item of parsed.sessions) {
         const key = normalizeSessionKey(item?.key);
-        const cookie = normalizeCookie(item?.cookie);
+        const cookie = normalizeCookie(decryptSecret(item?.cookie));
         if (!key) continue;
         // Cho phép session chỉ có IMAP mà chưa có cookie
         if (!cookie && !item?.imap) continue;
@@ -617,12 +1181,15 @@ async function loadNetflixSessionFromDisk() {
           updatedAt: typeof item?.updatedAt === "string" ? item.updatedAt : null,
           lastCheck:
             item?.lastCheck && typeof item.lastCheck === "object" ? item.lastCheck : null,
-          imap: item?.imap && typeof item.imap === "object" ? item.imap : null,
+          imap:
+            item?.imap && typeof item.imap === "object"
+              ? { user: String(item.imap.user || ""), pass: decryptSecret(item.imap.pass) }
+              : null,
         });
       }
     } else if (parsed?.cookie) {
       // Backward compatibility with old single-session format
-      const fallbackCookie = normalizeCookie(parsed.cookie);
+      const fallbackCookie = normalizeCookie(decryptSecret(parsed.cookie));
       if (fallbackCookie) {
         netflixStore.sessions.push({
           id: createSessionId(),
@@ -645,9 +1212,8 @@ async function loadNetflixSessionFromDisk() {
     netflixStore.activeSessionId = rawActiveId || null;
     ensureActiveSession();
   } catch (error) {
-    if (error?.code !== "ENOENT") {
-      console.error("Failed to load Netflix session:", error?.message || error);
-    }
+    if (error?.code === "ENOENT") return;
+    throw new Error(`Không thể đọc dữ liệu session: ${error?.message || error}`);
   }
 }
 
@@ -876,7 +1442,7 @@ function validateAuth(body) {
 function validateImapRequest(body) {
   const auth = validateAuth(body);
   const key = normalizeSessionKey(body?.key);
-  if (!auth || !key) return null;
+  if (!auth || !isValidSessionKey(key)) return null;
   return { auth, key };
 }
 
@@ -1242,7 +1808,7 @@ app.post("/api/imap/login", async (req, res) => {
   if (!imapRequest) {
     return res.status(400).json({
       ok: false,
-      message: "Thiếu thông tin đăng nhập: email, app password và key.",
+      message: "Thiếu thông tin đăng nhập hoặc key ngắn hơn 16 ký tự.",
     });
   }
   const { auth, key } = imapRequest;
@@ -1279,7 +1845,7 @@ app.post("/api/imap/labels", async (req, res) => {
   if (!imapRequest) {
     return res.status(400).json({
       ok: false,
-      message: "Thiếu thông tin đăng nhập: email, app password và key.",
+      message: "Thiếu thông tin đăng nhập hoặc key ngắn hơn 16 ký tự.",
     });
   }
   const { auth, key } = imapRequest;
@@ -1315,7 +1881,7 @@ app.post("/api/imap/fetch-mails", async (req, res) => {
   if (!imapRequest) {
     return res.status(400).json({
       ok: false,
-      message: "Thiếu thông tin đăng nhập: email, app password và key.",
+      message: "Thiếu thông tin đăng nhập hoặc key ngắn hơn 16 ký tự.",
     });
   }
   const { auth, key } = imapRequest;
@@ -1418,13 +1984,12 @@ app.post("/api/netflix/session", async (req, res) => {
   const key = normalizeSessionKey(req.body?.key);
   const parsedCookie = parseCookieInput(req.body?.cookie);
 
-  if (!key) {
+  if (!isValidSessionKey(key)) {
     return res.status(400).json({
       ok: false,
-      message: "Thiếu key định danh cho phiên Netflix.",
+      message: "Key định danh phải có từ 16 đến 80 ký tự.",
     });
   }
-
   if (!parsedCookie.cookie) {
     const reason =
       parsedCookie.parseError ||
@@ -1701,17 +2266,19 @@ app.post("/api/get-code", async (req, res) => {
   const key = String(req.body?.key || "").trim();
   const type = String(req.body?.type || "login_code").trim();
 
-  if (!key) {
-    return res.status(400).json({ ok: false, message: "Vui lòng nhập key tài khoản." });
+  const keyAccess = validateRegisteredAccessKey(key);
+  if (!keyAccess.ok) {
+    return res.status(isValidAccessKey(key) ? 403 : 400).json({ ok: false, message: keyAccess.message });
   }
   if (!["login_code", "temp_access", "home_update"].includes(type)) {
     return res.status(400).json({ ok: false, message: "Loại mã không hợp lệ." });
   }
 
-  const session = getSessionByKey(key);
+  const session = getSessionByKey(keyAccess.entry.linkedSessionKey);
   if (!session) {
-    return res.status(404).json({ ok: false, message: "Không tìm thấy tài khoản với key này." });
+    return res.status(404).json({ ok: false, message: "Access Key chưa liên kết với tài khoản hợp lệ." });
   }
+  await markAccessKeyUsed(keyAccess.entry);
 
   const cookie = session.cookie || "";
 
@@ -1880,15 +2447,20 @@ app.post("/api/submit-tv-code", async (req, res) => {
   if (!key || !code) {
     return res.status(400).json({ ok: false, message: "Thiếu key hoặc mã TV." });
   }
+  const keyAccess = validateRegisteredAccessKey(key);
+  if (!keyAccess.ok) {
+    return res.status(isValidAccessKey(key) ? 403 : 400).json({ ok: false, message: keyAccess.message });
+  }
 
   if (code.length !== 8) {
     return res.status(400).json({ ok: false, message: "Mã TV phải đủ 8 số." });
   }
 
-  const session = getSessionByKey(key);
+  const session = getSessionByKey(keyAccess.entry.linkedSessionKey);
   if (!session || !session.cookie) {
-    return res.status(400).json({ ok: false, message: "Không tìm thấy session hoặc cookie." });
+    return res.status(400).json({ ok: false, message: "Access Key chưa liên kết với session hoặc cookie hợp lệ." });
   }
+  await markAccessKeyUsed(keyAccess.entry);
 
   const cookie = session.cookie;
 
@@ -2042,10 +2614,12 @@ app.post("/api/submit-tv-code", async (req, res) => {
   }
 });
 
-await loadNetflixSessionFromDisk();
-
 app.use("/p8xK29panel", express.static(path.join(__dirname, "public", "p8xK29panel")));
 app.use(express.static(path.join(__dirname, "public")));
+
+app.use("/api", (_req, res) => {
+  res.status(404).json({ ok: false, message: "Không tìm thấy API." });
+});
 
 app.use((_req, res) => {
   // Admin SPA fallback
@@ -2056,7 +2630,35 @@ app.use((_req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-const port = Number(process.env.PORT || 3000);
-app.listen(port, () => {
-  console.log(`Admin UI running at http://localhost:${port}`);
-});
+function validateRuntimeConfig() {
+  const problems = [];
+  if (ADMIN_PASSWORD.length < 12) problems.push("ADMIN_PASSWORD phải có ít nhất 12 ký tự");
+  if (DATA_ENCRYPTION_KEY.length < 32) problems.push("DATA_ENCRYPTION_KEY phải có ít nhất 32 ký tự");
+  if (problems.length) throw new Error(`Cấu hình không hợp lệ: ${problems.join("; ")}`);
+}
+
+export async function startServer(options = {}) {
+  validateRuntimeConfig();
+  await loadAccessKeysFromDisk();
+  await saveAccessKeysToDisk();
+  await loadNetflixSessionFromDisk();
+  // Re-save once at startup to migrate legacy plaintext data to encrypted storage.
+  await saveNetflixSessionToDisk();
+  const port = options.port ?? Number(process.env.PORT || 3000);
+  const host = options.host ?? process.env.HOST ?? "127.0.0.1";
+  return new Promise((resolve, reject) => {
+    const server = app.listen(port, host, () => {
+      const address = server.address();
+      const actualPort = typeof address === "object" && address ? address.port : port;
+      console.log(`Server running at http://${host}:${actualPort}`);
+      resolve(server);
+    });
+    server.once("error", reject);
+  });
+}
+
+export { app };
+
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  await startServer();
+}

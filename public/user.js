@@ -179,8 +179,8 @@ function showError(message) {
 
 btn.addEventListener("click", async () => {
   const key = keyInput.value.trim();
-  if (!key) {
-    showError("Vui lòng nhập key tài khoản.");
+  if (!/^sk-[A-Za-z0-9_-]{12}$/.test(key)) {
+    showError("Access Key phải có dạng sk- và 12 ký tự ngẫu nhiên.");
     return;
   }
 

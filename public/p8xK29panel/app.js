@@ -31,6 +31,152 @@ const state = {
   selectedLabel: "",
 };
 
+const authState = {
+  csrfToken: "",
+  username: "",
+  initialized: false,
+  expiryTimer: null,
+};
+
+const loginScreen = qs("admin-login");
+const adminApp = qs("admin-app");
+const loginForm = qs("admin-login-form");
+const loginError = qs("admin-login-error");
+const loginSubmit = qs("admin-login-submit");
+const usernameInput = qs("admin-username");
+const passwordInput = qs("admin-password");
+
+function setLoginLoading(loading) {
+  loginSubmit.disabled = loading;
+  loginSubmit.classList.toggle("is-loading", loading);
+  qs("admin-username").disabled = loading;
+  qs("admin-password").disabled = loading;
+  qs("toggle-admin-password").disabled = loading;
+  qs("admin-login-submit").querySelector(".login-submit-text").textContent = loading
+    ? "Đang xác thực..."
+    : "Đăng nhập";
+}
+
+function showLoginView(message = "") {
+  if (authState.expiryTimer) window.clearTimeout(authState.expiryTimer);
+  authState.expiryTimer = null;
+  authState.csrfToken = "";
+  authState.username = "";
+  adminApp.hidden = true;
+  loginScreen.hidden = false;
+  loginError.textContent = message;
+  passwordInput.value = "";
+  setLoginLoading(false);
+  window.setTimeout(() => (usernameInput.value ? passwordInput : usernameInput).focus(), 0);
+}
+
+async function initializeAdminApp() {
+  if (authState.initialized) {
+    await loadNetflixSession();
+    return;
+  }
+  authState.initialized = true;
+  loadImapConfig();
+  renderImapAccountList();
+  await loadNetflixSession();
+}
+
+async function showAdminView(session) {
+  authState.csrfToken = String(session.csrfToken || "");
+  authState.username = String(session.username || "admin");
+  qs("admin-current-user").textContent = authState.username;
+  loginError.textContent = "";
+  loginScreen.hidden = true;
+  adminApp.hidden = false;
+  if (authState.expiryTimer) window.clearTimeout(authState.expiryTimer);
+  const expiresAt = new Date(session.expiresAt || 0).getTime();
+  if (Number.isFinite(expiresAt) && expiresAt > Date.now()) {
+    authState.expiryTimer = window.setTimeout(
+      () => showLoginView("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."),
+      Math.min(expiresAt - Date.now() + 250, 2_147_000_000)
+    );
+  }
+  await initializeAdminApp();
+}
+
+async function authenticatedFetch(url, options = {}) {
+  const method = String(options.method || "GET").toUpperCase();
+  const headers = new Headers(options.headers || {});
+  if (!["GET", "HEAD", "OPTIONS"].includes(method) && authState.csrfToken) {
+    headers.set("X-CSRF-Token", authState.csrfToken);
+  }
+  const response = await fetch(url, {
+    ...options,
+    method,
+    headers,
+    credentials: "same-origin",
+  });
+  if (response.status === 401) {
+    showLoginView("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+  }
+  return response;
+}
+
+loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const username = usernameInput.value.trim();
+  const password = passwordInput.value;
+  loginError.textContent = "";
+  if (!username || !password) {
+    loginError.textContent = "Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.";
+    return;
+  }
+
+  setLoginLoading(true);
+  try {
+    const response = await fetch("/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || "Không thể đăng nhập.");
+    passwordInput.value = "";
+    await showAdminView(data);
+  } catch (error) {
+    loginError.textContent = error.message || "Không thể kết nối tới server.";
+    passwordInput.select();
+  } finally {
+    setLoginLoading(false);
+  }
+});
+
+qs("toggle-admin-password").addEventListener("click", () => {
+  const show = passwordInput.type === "password";
+  passwordInput.type = show ? "text" : "password";
+  qs("toggle-admin-password").textContent = show ? "Ẩn" : "Hiện";
+  qs("toggle-admin-password").setAttribute("aria-label", show ? "Ẩn mật khẩu" : "Hiện mật khẩu");
+  passwordInput.focus();
+});
+
+qs("admin-logout").addEventListener("click", async () => {
+  const button = qs("admin-logout");
+  button.disabled = true;
+  try {
+    await authenticatedFetch("/api/admin/logout", { method: "POST" });
+  } finally {
+    button.disabled = false;
+    showLoginView("Bạn đã đăng xuất an toàn.");
+  }
+});
+
+async function bootstrapAdminAuth() {
+  try {
+    const response = await fetch("/api/admin/session", { credentials: "same-origin" });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok && data.authenticated) return showAdminView(data);
+    showLoginView();
+  } catch {
+    showLoginView("Không thể kết nối tới server. Vui lòng thử lại.");
+  }
+}
+
 function normalizeLookupText(input) {
   return String(input || "")
     .normalize("NFD")
@@ -94,7 +240,6 @@ function setStatus(text) {
 function saveImapConfig() {
   const config = {
     user: qs("imap-user").value.trim(),
-    pass: qs("imap-pass").value,
     key: qs("imap-key").value.trim(),
   };
   localStorage.setItem("admin.imap.config", JSON.stringify(config));
@@ -106,8 +251,12 @@ function loadImapConfig() {
   try {
     const config = JSON.parse(raw);
     qs("imap-user").value = config.user || "";
-    qs("imap-pass").value = config.pass || "";
+    qs("imap-pass").value = "";
     qs("imap-key").value = config.key || "";
+    localStorage.setItem(
+      "admin.imap.config",
+      JSON.stringify({ user: config.user || "", key: config.key || "" })
+    );
   } catch {
     // Bỏ qua cache lỗi
   }
@@ -119,7 +268,15 @@ const IMAP_ACCOUNTS_KEY = "admin.imap.accounts";
 function loadImapAccounts() {
   try {
     const raw = localStorage.getItem(IMAP_ACCOUNTS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const accounts = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(accounts)) return [];
+    const sanitized = accounts.map((account) => ({
+      user: String(account?.user || ""),
+      key: String(account?.key || ""),
+      savedAt: account?.savedAt || null,
+    }));
+    localStorage.setItem(IMAP_ACCOUNTS_KEY, JSON.stringify(sanitized));
+    return sanitized;
   } catch {
     return [];
   }
@@ -129,11 +286,11 @@ function saveImapAccounts(accounts) {
   localStorage.setItem(IMAP_ACCOUNTS_KEY, JSON.stringify(accounts));
 }
 
-function upsertImapAccount(user, pass, key) {
-  if (!user || !pass || !key) return;
+function upsertImapAccount(user, key) {
+  if (!user || !key) return;
   const accounts = loadImapAccounts();
   const idx = accounts.findIndex((a) => a.user.toLowerCase() === user.toLowerCase() && a.key.toLowerCase() === key.toLowerCase());
-  const entry = { user, pass, key, savedAt: new Date().toISOString() };
+  const entry = { user, key, savedAt: new Date().toISOString() };
   if (idx >= 0) {
     accounts[idx] = entry;
   } else {
@@ -152,9 +309,10 @@ function deleteImapAccount(user, key) {
 
 function fillImapForm(account) {
   qs("imap-user").value = account.user || "";
-  qs("imap-pass").value = account.pass || "";
+  qs("imap-pass").value = "";
   qs("imap-key").value = account.key || "";
   saveImapConfig();
+  setStatus("Đã điền tài khoản. Hãy nhập App Password để đăng nhập.");
 }
 
 function renderImapAccountList() {
@@ -173,10 +331,21 @@ function renderImapAccountList() {
     item.className = "imap-account-item";
 
     const savedAt = account.savedAt ? formatDateTime(account.savedAt, "") : "";
+    const linkedSession = netflixState.sessions.find(
+      (session) => normalizeLookupKey(session.key) === normalizeLookupKey(account.key)
+    );
+    const keyStats = linkedSession?.accessKeyStats || {};
     item.innerHTML = `
       <button class="imap-account-btn" type="button">
         <span class="imap-account-user">${escapeHtml(account.user)}</span>
         <span class="imap-account-key">${escapeHtml(account.key)}</span>
+        <span class="imap-account-stats">
+          GetCode: <strong>${Number(keyStats.total) || 0}</strong>
+          · hoạt động ${Number(keyStats.active) || 0}
+          · hết hạn ${Number(keyStats.expired) || 0}
+          · thu hồi ${Number(keyStats.revoked) || 0}
+          · ${Number(keyStats.usageCount) || 0} lượt dùng
+        </span>
         ${savedAt ? `<span class="imap-account-time">${escapeHtml(savedAt)}</span>` : ""}
       </button>
       <button class="imap-account-del" type="button" title="Xóa tài khoản này" data-user="${escapeAttr(account.user)}" data-key="${escapeAttr(account.key)}">✕</button>
@@ -184,8 +353,7 @@ function renderImapAccountList() {
 
     item.querySelector(".imap-account-btn").addEventListener("click", async () => {
       fillImapForm(account);
-      // Tự động đăng nhập luôn
-      qs("btn-imap-login").click();
+      qs("imap-pass").focus();
     });
 
     item.querySelector(".imap-account-del").addEventListener("click", (e) => {
@@ -201,6 +369,12 @@ function renderImapAccountList() {
 qs("btn-imap-accounts-clear")?.addEventListener("click", () => {
   saveImapAccounts([]);
   renderImapAccountList();
+});
+
+qs("btn-imap-stats-refresh")?.addEventListener("click", async () => {
+  setStatus("Đang làm mới thống kê key GetCode...");
+  await loadNetflixSession();
+  setStatus("Đã cập nhật thống kê key GetCode theo từng key liên kết.");
 });
 
 function escapeHtml(input) {
@@ -233,7 +407,7 @@ function extractPrimaryLocationLink(text) {
 }
 
 async function postJson(url, payload) {
-  const response = await fetch(url, {
+  const response = await authenticatedFetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -244,14 +418,14 @@ async function postJson(url, payload) {
 }
 
 async function getJson(url) {
-  const response = await fetch(url);
+  const response = await authenticatedFetch(url);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.message || `Yeu cau that bai: ${response.status}`);
   return data;
 }
 
 async function deleteJson(url) {
-  const response = await fetch(url, { method: "DELETE" });
+  const response = await authenticatedFetch(url, { method: "DELETE" });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.message || `Yeu cau that bai: ${response.status}`);
   return data;
@@ -515,6 +689,9 @@ qs("btn-imap-login").addEventListener("click", async () => {
       pass: qs("imap-pass").value,
       key: qs("imap-key").value.trim(),
     };
+    if (auth.key.length < 16) {
+      throw new Error("Key phải có ít nhất 16 ký tự.");
+    }
     const data = await postJson("/api/imap/login", auth);
 
     state.user = auth.user;
@@ -522,7 +699,7 @@ qs("btn-imap-login").addEventListener("click", async () => {
     state.key = auth.key;
     state.loggedIn = true;
     // Lưu tài khoản vào danh sách truy cập nhanh
-    upsertImapAccount(auth.user, auth.pass, auth.key);
+    upsertImapAccount(auth.user, auth.key);
     renderImapAccountList();
     if (state.key) {
       cookieKeyInput.value = state.key;
@@ -553,7 +730,6 @@ qs("btn-imap-login").addEventListener("click", async () => {
 });
 
 qs("imap-user").addEventListener("input", saveImapConfig);
-qs("imap-pass").addEventListener("input", saveImapConfig);
 qs("imap-key").addEventListener("input", saveImapConfig);
 
 const cookieInput = qs("nf-cookie");
@@ -601,7 +777,7 @@ function renderSessionList() {
   sessionListRoot.innerHTML = "";
   if (!netflixState.sessions.length) {
     sessionListRoot.innerHTML =
-      '<tr><td colspan="4">Chưa có phiên nào được lưu.</td></tr>';
+      '<tr><td colspan="5">Chưa có phiên nào được lưu.</td></tr>';
     return;
   }
 
@@ -634,11 +810,14 @@ function renderSessionList() {
       : session.id === netflixState.activeSessionId
         ? '<span class="pill">ACTIVE</span>'
         : '<span class="pill">SAVED</span>';
+    const keyStats = session.accessKeyStats || {};
+    const statsText = `${Number(keyStats.total) || 0} tổng · ${Number(keyStats.active) || 0} hoạt động · ${Number(keyStats.expired) || 0} hết hạn · ${Number(keyStats.revoked) || 0} thu hồi · ${Number(keyStats.usageCount) || 0} lượt`;
 
     row.innerHTML = `
       <td>${escapeHtml(session.key || "(không key)")} ${linkBadge}</td>
       <td>${escapeHtml(lastCheckedAt)}</td>
       <td><span class="session-status ${statusClass}">${statusText}</span></td>
+      <td><span class="getcode-stats">${escapeHtml(statsText)}</span></td>
       <td><button class="session-delete-btn" type="button" data-action="delete" data-id="${escapeAttr(session.id || "")}">Xóa</button></td>
     `;
     sessionListRoot.appendChild(row);
@@ -731,6 +910,7 @@ async function loadNetflixSession() {
       }
     }
     renderSessionList();
+    renderImapAccountList();
     cookieKeyInput.value = session.activeSessionKey || state.key || "";
     cookieResult.textContent = formatSessionInfo(session);
   } catch (error) {
@@ -746,8 +926,8 @@ saveCookieBtn.addEventListener("click", async () => {
     return;
   }
 
-  if (!key) {
-    cookieResult.textContent = "Vui lòng nhập key định danh trước khi lưu phiên.";
+  if (key.length < 16) {
+    cookieResult.textContent = "Key định danh phải có ít nhất 16 ký tự.";
     return;
   }
 
@@ -836,9 +1016,7 @@ clearAllSessionsBtn.addEventListener("click", async () => {
   }
 });
 
-loadImapConfig();
-loadNetflixSession();
-renderImapAccountList();
+bootstrapAdminAuth();
 
 
 

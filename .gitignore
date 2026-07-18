@@ -1,3 +1,13 @@
 node_modules
 .env
+.env.*
+!.env.example
 npm-debug.log*
+data/netflix-session.json
+data/access-keys.json
+*.pem
+*.key
+id_rsa*
+/yes
+/yes.pub
+coverage

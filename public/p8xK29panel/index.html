@@ -16,10 +16,60 @@
     <div class="bg-shape bg-shape-a"></div>
     <div class="bg-shape bg-shape-b"></div>
 
-    <main class="layout">
+    <section id="admin-login" class="login-screen" aria-labelledby="login-title">
+      <div class="login-card">
+        <div class="login-brand" aria-hidden="true">N</div>
+        <p class="login-eyebrow">KHU VỰC QUẢN TRỊ</p>
+        <h1 id="login-title">Chào mừng trở lại</h1>
+        <p class="login-subtitle">Đăng nhập để quản lý IMAP và phiên Netflix.</p>
+
+        <form id="admin-login-form" class="login-form" novalidate>
+          <label for="admin-username">
+            Tên đăng nhập
+            <input
+              id="admin-username"
+              name="username"
+              type="text"
+              autocomplete="username"
+              maxlength="80"
+              required
+              autofocus
+            />
+          </label>
+          <label for="admin-password">
+            Mật khẩu
+            <span class="password-field">
+              <input
+                id="admin-password"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                required
+              />
+              <button id="toggle-admin-password" class="password-toggle" type="button" aria-label="Hiện mật khẩu">Hiện</button>
+            </span>
+          </label>
+          <p id="admin-login-error" class="login-error" role="alert" aria-live="polite"></p>
+          <button id="admin-login-submit" class="login-submit" type="submit">
+            <span class="login-submit-text">Đăng nhập</span>
+            <span class="login-spinner" aria-hidden="true"></span>
+          </button>
+        </form>
+        <p class="login-security-note">Phiên đăng nhập được bảo vệ bằng cookie HttpOnly và tự hết hạn.</p>
+      </div>
+    </section>
+
+    <main id="admin-app" class="layout" hidden>
       <header class="topbar">
-        <h1>Bảng Điều Khiển Quản Trị</h1>
-        <p>Đăng nhập IMAP và xem thư theo 3 nhãn Netflix cố định</p>
+        <div>
+          <h1>Bảng Điều Khiển Quản Trị</h1>
+          <p>Đăng nhập IMAP và xem thư theo 3 nhãn Netflix cố định</p>
+        </div>
+        <div class="admin-profile">
+          <span class="admin-avatar" aria-hidden="true">A</span>
+          <span id="admin-current-user" class="admin-current-user"></span>
+          <button id="admin-logout" class="admin-logout" type="button">Đăng xuất</button>
+        </div>
       </header>
 
       <section class="tabs">
@@ -44,8 +94,8 @@
               <input id="imap-pass" type="password" />
             </label>
             <label>
-              Key IMAP (bắt buộc)
-              <input id="imap-key" placeholder="acc-main, acc-khach, ..." />
+              Key liên kết IMAP/Netflix
+              <input id="imap-key" minlength="16" maxlength="80" autocomplete="off" placeholder="Nhập key nội bộ riêng cho tài khoản này" />
             </label>
           </div>
           <div class="actions">
@@ -57,7 +107,10 @@
         <div class="card" id="imap-accounts-card">
           <div class="imap-accounts-head">
             <h2>Tài Khoản Đã Lưu</h2>
-            <button id="btn-imap-accounts-clear" class="btn-danger-sm" title="Xóa toàn bộ tài khoản đã lưu">Xóa Tất Cả</button>
+            <div class="imap-accounts-actions">
+              <button id="btn-imap-stats-refresh" type="button">Làm Mới Thống Kê</button>
+              <button id="btn-imap-accounts-clear" class="btn-danger-sm" title="Xóa toàn bộ tài khoản đã lưu">Xóa Tất Cả</button>
+            </div>
           </div>
           <p class="hint">Bấm vào tài khoản để điền sẵn và đăng nhập ngay.</p>
           <div id="imap-account-list" class="imap-account-list">
@@ -90,10 +143,12 @@
             ></textarea>
           </label>
           <label>
-            Key định danh phiên (ví dụ: acc-main, acc-khach, acc-2026-05)
+            Key liên kết IMAP/Netflix (16–80 ký tự)
             <input
               id="nf-key"
-              placeholder="Nhập key để lưu và nhận biết tài khoản"
+              minlength="16"
+              maxlength="80"
+              placeholder="Dùng đúng key nội bộ của tài khoản IMAP"
             />
           </label>
           <div class="actions">
@@ -114,6 +169,7 @@
                     <th>Key</th>
                     <th>Cập Nhật Gần Nhất</th>
                     <th>Tình Trạng</th>
+                    <th>Key GetCode</th>
                     <th>Xóa</th>
                   </tr>
                 </thead>

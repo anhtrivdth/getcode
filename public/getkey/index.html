@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quản lý Access Key</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/getkey/styles.css" />
+  </head>
+  <body>
+    <div class="glow glow-a"></div>
+    <div class="glow glow-b"></div>
+
+    <section id="getkey-login" class="key-login-screen" aria-labelledby="getkey-login-title">
+      <form id="getkey-login-form" class="key-login-card">
+        <div class="key-login-icon" aria-hidden="true">K</div>
+        <p class="eyebrow">GETKEY ACCESS</p>
+        <h1 id="getkey-login-title">Mở trình tạo Key</h1>
+        <p class="key-login-subtitle">Nhập Key liên kết IMAP/Netflix đã được cấu hình trong Admin.</p>
+        <label>
+          Key liên kết IMAP/Netflix
+          <input id="getkey-linked-key" minlength="16" maxlength="80" autocomplete="off" placeholder="Nhập key nội bộ đã gắn với IMAP" required autofocus />
+        </label>
+        <p id="getkey-login-error" class="form-error" role="alert"></p>
+        <button id="getkey-login-submit" class="button button-primary" type="submit">Truy cập GetKey</button>
+        <p class="key-login-note">Không cần mật khẩu Admin. Mỗi phiên chỉ quản lý các Access Key thuộc IMAP này.</p>
+      </form>
+    </section>
+
+    <main id="key-app" class="page" hidden>
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">GETKEY / ACCESS CONTROL</p>
+          <h1>Quản lý Access Key</h1>
+          <p class="subtitle">Tạo Access Key dạng sk- + 12 ký tự ngẫu nhiên, có thời hạn cho IMAP/Netflix đã xác thực.</p>
+        </div>
+        <nav class="header-actions" aria-label="Điều hướng GetKey">
+          <span class="admin-chip">GetKey độc lập</span>
+          <button id="key-logout" class="button button-danger" type="button">Đăng xuất</button>
+        </nav>
+      </header>
+
+      <section class="stats" aria-label="Thống kê key">
+        <article><span id="stat-total">0</span><small>Tổng key</small></article>
+        <article><span id="stat-active">0</span><small>Đang hoạt động</small></article>
+        <article><span id="stat-expired">0</span><small>Đã hết hạn</small></article>
+        <article><span id="stat-revoked">0</span><small>Đã thu hồi</small></article>
+      </section>
+
+      <section class="panel create-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">REG KEY</p>
+            <h2>Tạo Access Key mới</h2>
+          </div>
+          <span class="secure-badge">Access Key lưu dạng SHA-256</span>
+        </div>
+
+        <form id="key-create-form" class="create-form">
+          <label>
+            Tên / ghi chú
+            <input id="key-label" maxlength="80" placeholder="Ví dụ: Khách hàng A - gói 30 ngày" required />
+          </label>
+          <label>
+            Hạn sử dụng
+            <input id="key-expiry" type="datetime-local" required />
+          </label>
+          <div class="duration-row full-width" aria-label="Chọn nhanh hạn sử dụng">
+            <span>Chọn nhanh:</span>
+            <button type="button" data-days="1">1 ngày</button>
+            <button type="button" data-days="7">7 ngày</button>
+            <button type="button" data-days="30">30 ngày</button>
+            <button type="button" data-days="90">90 ngày</button>
+          </div>
+          <p id="key-form-error" class="form-error full-width" role="alert"></p>
+          <button id="key-create-submit" class="button button-primary full-width" type="submit">Tạo Access Key ngẫu nhiên</button>
+        </form>
+      </section>
+
+      <section id="new-key-result" class="new-key" hidden aria-live="polite">
+        <div>
+          <p class="eyebrow">KEY VỪA TẠO — CHỈ HIỆN MỘT LẦN</p>
+          <code id="new-key-value"></code>
+          <p>Dùng key dạng sk- + 12 ký tự này tại trang index để lấy code. Server chỉ lưu bản băm, không thể xem lại key đầy đủ.</p>
+        </div>
+        <button id="copy-new-key" class="button button-primary" type="button">Sao chép Key</button>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading list-heading">
+          <div>
+            <p class="eyebrow">KEY REGISTRY</p>
+            <h2>Danh sách key</h2>
+          </div>
+          <button id="refresh-keys" class="button button-secondary" type="button">Làm mới</button>
+        </div>
+        <p id="key-list-message" class="list-message"></p>
+        <div id="key-list" class="key-list"></div>
+      </section>
+    </main>
+
+    <script src="/getkey/app.js" defer></script>
+  </body>
+</html>
